@@ -5,14 +5,18 @@ import { DndContext, DragOverlay, closestCenter, KeyboardSensor, PointerSensor, 
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
+import socketService from '../../services/socket.service';
 import { useProjectStore } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
+import { useUIStore } from '../../store/uiStore';
 import { KanbanColumn, KanbanColumnSkeleton } from '../../components/kanban/KanbanColumn';
 import { KanbanCard } from '../../components/kanban/KanbanCard';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Spinner } from '../../components/ui/Spinner';
 import { NoTasksEmptyState } from '../../components/common/EmptyState';
+import { TaskCreateModal } from '../../components/modals/TaskCreateModal';
+import TaskDrawer from '../../components/drawers/TaskDrawer';
 import { Task } from '../../types/task.types';
 import { Filter, Plus, Search, SortAsc } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,9 +25,12 @@ const KanbanPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
   const { currentProject, setCurrentProject, fetchProjects } = useProjectStore();
-  const { setCurrentTask } = useTaskStore();
+  const { currentTask, setCurrentTask } = useTaskStore();
+  const { taskDrawerOpen, setTaskDrawerOpen } = useUIStore();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createModalStatus, setCreateModalStatus] = useState('Todo');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -33,6 +40,69 @@ const KanbanPage: React.FC = () => {
     }),
     useSensor(KeyboardSensor)
   );
+
+  // Set current project from URL
+  useEffect(() => {
+    if (projectId && currentProject?._id !== projectId) {
+      const project = useProjectStore.getState().projects.find(p => p._id === projectId);
+      if (project) {
+        setCurrentProject(project);
+      }
+    }
+  }, [projectId, currentProject?._id]);
+
+  // Socket.io real-time updates
+  useEffect(() => {
+    if (projectId && socketService.connected) {
+      socketService.joinProject(projectId);
+
+      // Listen for task updates
+      socketService.on('task:created', (data: Task) => {
+        queryClient.setQueryData(['tasks', projectId], (old: Task[] | undefined) => {
+          if (!old) return [data];
+          return [data, ...old];
+        });
+        toast.success(`New task: ${data.title}`);
+      });
+
+      socketService.on('task:updated', (data: Task) => {
+        queryClient.setQueryData(['tasks', projectId], (old: Task[] | undefined) => {
+          if (!old) return old;
+          return old.map((t) => (t._id === data._id ? data : t));
+        });
+        if (currentTask?._id === data._id) {
+          setCurrentTask(data);
+        }
+      });
+
+      socketService.on('task:deleted', (data: { taskId: string }) => {
+        queryClient.setQueryData(['tasks', projectId], (old: Task[] | undefined) => {
+          if (!old) return old;
+          return old.filter((t) => t._id !== data.taskId);
+        });
+        if (currentTask?._id === data.taskId) {
+          setTaskDrawerOpen(false);
+        }
+      });
+
+      socketService.on('task:moved', (data: Task) => {
+        queryClient.setQueryData(['tasks', projectId], (old: Task[] | undefined) => {
+          if (!old) return old;
+          return old.map((t) => (t._id === data._id ? data : t));
+        });
+      });
+    }
+
+    return () => {
+      if (projectId) {
+        socketService.leaveProject(projectId);
+        socketService.off('task:created');
+        socketService.off('task:updated');
+        socketService.off('task:deleted');
+        socketService.off('task:moved');
+      }
+    };
+  }, [projectId, socketService.connected]);
 
   // Fetch tasks
   const { data: tasks, isLoading } = useQuery({
@@ -114,6 +184,16 @@ const KanbanPage: React.FC = () => {
     }
   };
 
+  const handleAddTask = (status: string) => {
+    setCreateModalStatus(status);
+    setShowCreateModal(true);
+  };
+
+  const handleTaskClick = (task: Task) => {
+    setCurrentTask(task);
+    setTaskDrawerOpen(true);
+  };
+
   const activeTask = tasks?.find((t: Task) => t._id === activeId);
 
   return (
@@ -142,7 +222,7 @@ const KanbanPage: React.FC = () => {
           </Button>
         </div>
 
-        <Button>
+        <Button onClick={() => handleAddTask('Todo')}>
           <Plus className="w-4 h-4 mr-2" />
           Add Task
         </Button>
@@ -157,7 +237,7 @@ const KanbanPage: React.FC = () => {
         </div>
       ) : tasks?.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
-          <NoTasksEmptyState />
+          <NoTasksEmptyState onCreateTask={() => handleAddTask('Todo')} />
         </div>
       ) : (
         <DndContext
@@ -178,7 +258,8 @@ const KanbanPage: React.FC = () => {
                   title={status.name}
                   color={status.color}
                   tasks={tasksByStatus[status.name] || []}
-                  onTaskClick={(task) => setCurrentTask(task)}
+                  onTaskClick={handleTaskClick}
+                  onAddTask={() => handleAddTask(status.name)}
                 />
               ))}
             </SortableContext>
@@ -193,6 +274,26 @@ const KanbanPage: React.FC = () => {
           </DragOverlay>
         </DndContext>
       )}
+
+      {/* Task Create Modal */}
+      <TaskCreateModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        projectId={projectId!}
+        defaultStatus={createModalStatus}
+        projectMembers={currentProject?.members}
+        statuses={statuses}
+      />
+
+      {/* Task Drawer */}
+      <TaskDrawer
+        isOpen={taskDrawerOpen}
+        onClose={() => setTaskDrawerOpen(false)}
+        task={currentTask}
+        projectId={projectId!}
+        projectMembers={currentProject?.members}
+        statuses={statuses}
+      />
     </div>
   );
 };

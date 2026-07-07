@@ -13,6 +13,7 @@ interface KanbanColumnProps {
   color: string;
   tasks: Task[];
   onTaskClick?: (task: Task) => void;
+  onAddTask?: () => void;
 }
 
 export const KanbanColumn: React.FC<KanbanColumnProps> = ({
@@ -21,6 +22,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   color,
   tasks,
   onTaskClick,
+  onAddTask,
 }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -70,7 +72,10 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
       </SortableContext>
 
       {/* Add task button */}
-      <button className="w-full p-2 flex items-center justify-center gap-1 text-gray-500 hover:bg-gray-100 rounded-b-lg text-sm transition-colors">
+      <button
+        onClick={onAddTask}
+        className="w-full p-2 flex items-center justify-center gap-1 text-gray-500 hover:bg-gray-100 rounded-b-lg text-sm transition-colors"
+      >
         <Plus className="w-4 h-4" />
         Add task
       </button>

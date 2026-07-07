@@ -54,16 +54,15 @@ const DashboardPage: React.FC = () => {
     enabled: !!currentWorkspace?._id,
   });
 
-  // Fetch my tasks
+  // Fetch my tasks - use tasks from current project or all projects
   const { data: myTasks, isLoading: tasksLoading } = useQuery({
-    queryKey: ['my-tasks'],
+    queryKey: ['my-tasks', currentWorkspace?._id],
     queryFn: async () => {
-      const response = await api.get('/tasks/project/all', {
-        params: { assignee: user?._id }
-      });
+      if (!currentWorkspace?._id) return [];
+      const response = await api.get(`/tasks/workspace/${currentWorkspace._id}/assigned`);
       return response.data.data?.slice(0, 5) || [];
     },
-    enabled: !!user?._id,
+    enabled: !!currentWorkspace?._id,
   });
 
   const getGreeting = () => {
