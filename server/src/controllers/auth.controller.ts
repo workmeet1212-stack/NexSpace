@@ -1,3 +1,5 @@
+// auth.controller.ts
+
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import {
@@ -21,63 +23,51 @@ import { sanitizeEmail, generateUUID, slugify } from '../utils/helpers';
 import { env } from '../config/env';
 import passport from 'passport';
 
-// Validation schemas
+// ✅ Validation schemas — NO `body:` wrapper
 const registerSchema = z.object({
-  body: z.object({
-    name: z.string().min(2).max(100),
-    email: z.string().email(),
-    password: z.string().min(8).max(100),
-  }),
+  name: z.string().min(2).max(100),
+  email: z.string().email(),
+  password: z.string().min(8).max(100),
 });
 
 const loginSchema = z.object({
-  body: z.object({
-    email: z.string().email(),
-    password: z.string(),
-  }),
+  email: z.string().email(),
+  password: z.string(),
 });
 
 const verifyEmailSchema = z.object({
-  body: z.object({
-    email: z.string().email(),
-    otp: z.string().length(6),
-  }),
+  email: z.string().email(),
+  otp: z.string().length(6),
 });
 
 const forgotPasswordSchema = z.object({
-  body: z.object({
-    email: z.string().email(),
-  }),
+  email: z.string().email(),
 });
 
 const resetPasswordSchema = z.object({
-  body: z.object({
-    email: z.string().email(),
-    otp: z.string().length(6),
-    newPassword: z.string().min(8).max(100),
-  }),
+  email: z.string().email(),
+  otp: z.string().length(6),
+  newPassword: z.string().min(8).max(100),
 });
 
 const cookieOptions = {
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  sameSite: 'lax' as const, // ✅ 'lax' for OAuth redirect to work
+  maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
 // Register
 export const register = async (req: Request, res: Response): Promise<void> => {
-  const { name, email, password } = registerSchema.parse(req.body).body;
+  const { name, email, password } = registerSchema.parse(req.body);
   const sanitizedEmail = sanitizeEmail(email);
 
-  // Check if user exists
   const existingUser = await findUserByEmail(sanitizedEmail);
   if (existingUser) {
     errorResponse({ res, message: 'Email already registered', statusCode: 409 });
     return;
   }
 
-  // Create user
   const user = await createUser({
     name,
     email: sanitizedEmail,
@@ -85,14 +75,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     provider: 'local',
   });
 
-  // Generate and send OTP
   const { otp } = await sendOTP(sanitizedEmail, 'email_verify');
-  await sendOTPEmail({
-    email: sanitizedEmail,
-    name,
-    otp,
-    purpose: 'email_verify',
-  });
+  await sendOTPEmail({ email: sanitizedEmail, name, otp, purpose: 'email_verify' });
 
   successResponse({
     res,
@@ -109,30 +93,26 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 // Login
 export const login = async (req: Request, res: Response): Promise<void> => {
-  const { email, password } = loginSchema.parse(req.body).body;
+  const { email, password } = loginSchema.parse(req.body);
   const sanitizedEmail = sanitizeEmail(email);
 
-  // Find user
   const user = await findUserByEmail(sanitizedEmail);
   if (!user) {
     errorResponse({ res, message: 'Invalid credentials', statusCode: 401 });
     return;
   }
 
-  // Check status
   if (user.status === 'suspended') {
     errorResponse({ res, message: 'Account suspended', statusCode: 403 });
     return;
   }
 
-  // Check password
   const isPasswordValid = await user.comparePassword(password);
   if (!isPasswordValid) {
     errorResponse({ res, message: 'Invalid credentials', statusCode: 401 });
     return;
   }
 
-  // Check email verification
   if (!user.isEmailVerified) {
     errorResponse({
       res,
@@ -143,7 +123,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Check 2FA (if enabled)
   if (user.twoFactorEnabled) {
     successResponse({
       res,
@@ -153,16 +132,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Generate tokens
   const { accessToken, refreshToken } = await generateTokens(user._id.toString());
-
-  // Cache user
   await cacheUser(user);
-
-  // Update last login
   await updateUserLastLogin(user._id.toString());
-
-  // Set refresh token cookie
   res.cookie('refreshToken', refreshToken, cookieOptions);
 
   successResponse({
@@ -195,12 +167,7 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
   try {
     const { accessToken, refreshToken: newRefreshToken } = await verifyRefreshToken(token);
     res.cookie('refreshToken', newRefreshToken, cookieOptions);
-
-    successResponse({
-      res,
-      data: { accessToken },
-      message: 'Token refreshed',
-    });
+    successResponse({ res, data: { accessToken }, message: 'Token refreshed' });
   } catch {
     res.clearCookie('refreshToken');
     errorResponse({ res, message: 'Invalid refresh token', statusCode: 401 });
@@ -213,29 +180,21 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
 
   if (token) {
     try {
-      // Decode to get tokenId and revoke
       const jwt = require('jsonwebtoken');
       const decoded = jwt.decode(token);
       if (decoded?.userId && decoded?.tokenId) {
         await revokeAllUserTokens(decoded.userId);
       }
-    } catch {
-      // Ignore errors
-    }
+    } catch {}
   }
 
   res.clearCookie('refreshToken');
-
-  successResponse({
-    res,
-    data: null,
-    message: 'Logged out successfully',
-  });
+  successResponse({ res, data: null, message: 'Logged out successfully' });
 };
 
 // Verify email
 export const verifyEmail = async (req: Request, res: Response): Promise<void> => {
-  const { email, otp } = verifyEmailSchema.parse(req.body).body;
+  const { email, otp } = verifyEmailSchema.parse(req.body);
   const sanitizedEmail = sanitizeEmail(email);
 
   try {
@@ -245,7 +204,6 @@ export const verifyEmail = async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
-  // Find user and mark as verified
   const user = await findUserByEmail(sanitizedEmail);
   if (!user) {
     errorResponse({ res, message: 'User not found', statusCode: 404 });
@@ -253,17 +211,9 @@ export const verifyEmail = async (req: Request, res: Response): Promise<void> =>
   }
 
   await markEmailVerified(user._id.toString());
-
-  // Generate tokens
   const { accessToken, refreshToken } = await generateTokens(user._id.toString());
-
-  // Cache user
   await cacheUser(user);
-
-  // Set refresh token cookie
   res.cookie('refreshToken', refreshToken, cookieOptions);
-
-  // Send welcome email
   await sendWelcomeEmail(sanitizedEmail, user.name);
 
   successResponse({
@@ -286,12 +236,11 @@ export const verifyEmail = async (req: Request, res: Response): Promise<void> =>
 
 // Forgot password
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
-  const { email } = forgotPasswordSchema.parse(req.body).body;
+  const { email } = forgotPasswordSchema.parse(req.body);
   const sanitizedEmail = sanitizeEmail(email);
 
   const user = await findUserByEmail(sanitizedEmail);
   if (!user) {
-    // Don't reveal if user exists or not
     successResponse({
       res,
       data: null,
@@ -300,7 +249,6 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
     return;
   }
 
-  // Generate and send OTP
   const { otp } = await sendOTP(sanitizedEmail, 'password_reset');
   await sendOTPEmail({
     email: sanitizedEmail,
@@ -318,7 +266,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
 // Reset password
 export const resetPassword = async (req: Request, res: Response): Promise<void> => {
-  const { email, otp, newPassword } = resetPasswordSchema.parse(req.body).body;
+  const { email, otp, newPassword } = resetPasswordSchema.parse(req.body);
   const sanitizedEmail = sanitizeEmail(email);
 
   try {
@@ -334,17 +282,10 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // Update password
   await updatePassword(user._id.toString(), newPassword);
-
-  // Revoke all tokens
   await revokeAllUserTokens(user._id.toString());
 
-  successResponse({
-    res,
-    data: null,
-    message: 'Password reset successful',
-  });
+  successResponse({ res, data: null, message: 'Password reset successful' });
 };
 
 // Get current user
@@ -356,14 +297,11 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Try cache first
   let user = await getCachedUser(userId);
 
   if (!user) {
     user = await findUserById(userId);
-    if (user) {
-      await cacheUser(user);
-    }
+    if (user) await cacheUser(user);
   }
 
   if (!user) {
@@ -371,11 +309,7 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  successResponse({
-    res,
-    data: user,
-    message: 'User fetched successfully',
-  });
+  successResponse({ res, data: user, message: 'User fetched successfully' });
 };
 
 // Google OAuth
@@ -434,7 +368,6 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
   const { name, avatar, preferences } = req.body;
 
   const user = await findUserById(userId!);
-
   if (!user) {
     errorResponse({ res, message: 'User not found', statusCode: 404 });
     return;
@@ -478,10 +411,7 @@ export const completeOnboarding = async (req: Request, res: Response): Promise<v
 
   successResponse({
     res,
-    data: {
-      _id: user._id,
-      onboardingCompleted: user.onboardingCompleted,
-    },
+    data: { _id: user._id, onboardingCompleted: user.onboardingCompleted },
     message: 'Onboarding completed',
   });
 };
@@ -493,7 +423,6 @@ export const resendOTP = async (req: Request, res: Response): Promise<void> => {
 
   const user = await findUserByEmail(sanitizedEmail);
   if (!user) {
-    // Don't reveal if user exists
     successResponse({
       res,
       data: null,
@@ -504,18 +433,8 @@ export const resendOTP = async (req: Request, res: Response): Promise<void> => {
 
   try {
     const { otp } = await sendOTP(sanitizedEmail, purpose);
-    await sendOTPEmail({
-      email: sanitizedEmail,
-      name: user.name,
-      otp,
-      purpose,
-    });
-
-    successResponse({
-      res,
-      data: null,
-      message: 'New verification code sent',
-    });
+    await sendOTPEmail({ email: sanitizedEmail, name: user.name, otp, purpose });
+    successResponse({ res, data: null, message: 'New verification code sent' });
   } catch (error: any) {
     errorResponse({ res, message: error.message, statusCode: 429 });
   }

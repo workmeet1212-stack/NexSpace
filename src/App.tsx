@@ -1,5 +1,5 @@
 import React, { useEffect, Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate  } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { useAuthStore } from './store/authStore';
@@ -38,7 +38,12 @@ const queryClient = new QueryClient({
 
 // Route guards
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading, user } = useAuthStore();
+  const { isAuthenticated, isLoading, user, accessToken } = useAuthStore();
+
+  // ✅ No token = redirect immediately (never show spinner)
+  if (!accessToken) {
+    return <Navigate to="/login" replace />;
+  }
 
   if (isLoading) {
     return (
@@ -87,8 +92,9 @@ function App() {
   const { isAuthenticated, accessToken, fetchUser, isLoading } = useAuthStore();
 
   useEffect(() => {
-    // Fetch user on mount if we have a stored session
-    if (!isAuthenticated && !isLoading) {
+    // ✅ Only fetch if we have a token from storage
+    const { accessToken: storedToken } = useAuthStore.getState();
+    if (storedToken) {
       fetchUser();
     }
   }, []);
@@ -177,21 +183,36 @@ function App() {
 
 // OAuth callback handler
 const AuthCallback: React.FC = () => {
-  const { login } = useAuthStore();
-  const [processed, setProcessed] = React.useState(false);
+  const navigate = useNavigate();
+  const { setAccessToken, fetchUser } = useAuthStore();
+  const processedRef = React.useRef(false);
 
   useEffect(() => {
+    if (processedRef.current) return;
+    processedRef.current = true;
+
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
 
-    if (token && !processed) {
-      // Store token and redirect
-      localStorage.setItem('accessToken', token);
-      login({} as any, token); // User data will be fetched in fetchUser
-      setProcessed(true);
-      window.location.href = '/dashboard';
+    if (!token) {
+      navigate('/login', { replace: true });
+      return;
     }
-  }, [processed]);
+
+    // ✅ Save token in store (auto-persists to localStorage)
+    setAccessToken(token);
+
+    // ✅ Small delay to ensure persist completes
+    setTimeout(async () => {
+      await fetchUser();
+      const user = useAuthStore.getState().user;
+      if (user?.onboardingCompleted) {
+        navigate('/dashboard', { replace: true });
+      } else {
+        navigate('/onboarding', { replace: true });
+      }
+    }, 100);
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center">

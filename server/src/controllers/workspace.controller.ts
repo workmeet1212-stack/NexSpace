@@ -1,3 +1,5 @@
+// workspace.controller.ts
+
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { Workspace, IWorkspace } from '../models/Workspace.model';
@@ -10,41 +12,34 @@ import { sendInviteEmail } from '../services/email.service';
 import { v4 as uuidv4 } from 'uuid';
 import { redis, RedisKeys } from '../config/redis';
 
-// Validation schemas
+// ✅ Validation schemas — NO `body:` wrapper
 const createWorkspaceSchema = z.object({
-  body: z.object({
-    name: z.string().min(2).max(100),
-    description: z.string().max(500).optional(),
-    color: z.string().optional(),
-  }),
+  name: z.string().min(2).max(100),
+  description: z.string().max(500).optional(),
+  color: z.string().optional(),
 });
 
 const updateWorkspaceSchema = z.object({
-  body: z.object({
-    name: z.string().min(2).max(100).optional(),
-    description: z.string().max(500).optional(),
-    logo: z.string().optional(),
-    color: z.string().optional(),
-    settings: z.object({
-      allowMemberInvite: z.boolean().optional(),
-      defaultRole: z.string().optional(),
-    }).optional(),
-  }),
+  name: z.string().min(2).max(100).optional(),
+  description: z.string().max(500).optional(),
+  logo: z.string().optional(),
+  color: z.string().optional(),
+  settings: z.object({
+    allowMemberInvite: z.boolean().optional(),
+    defaultRole: z.string().optional(),
+  }).optional(),
 });
 
 const inviteMemberSchema = z.object({
-  body: z.object({
-    email: z.string().email(),
-    role: z.enum(['admin', 'member', 'viewer']).optional(),
-  }),
+  email: z.string().email(),
+  role: z.enum(['admin', 'member', 'viewer']).optional(),
 });
 
 // Create workspace
 export const createWorkspace = async (req: Request, res: Response): Promise<void> => {
-  const { name, description, color } = createWorkspaceSchema.parse(req.body).body;
+  const { name, description, color } = createWorkspaceSchema.parse(req.body);
   const userId = req.userId!;
 
-  // Generate unique slug
   let slug = slugify(name);
   let slugCount = 0;
   let uniqueSlug = slug;
@@ -60,7 +55,7 @@ export const createWorkspace = async (req: Request, res: Response): Promise<void
     description: description || '',
     color: color || '#6366f1',
     owner: userId,
-    members: [],
+    members: [{ user: userId, role: 'owner', joinedAt: new Date() }], // ✅ Add owner as member
     settings: {
       allowMemberInvite: true,
       defaultRole: 'member',
@@ -69,7 +64,6 @@ export const createWorkspace = async (req: Request, res: Response): Promise<void
 
   await workspace.save();
 
-  // Populate owner info
   await workspace.populate('owner', 'name email avatar');
   await workspace.populate('members.user', 'name email avatar');
 
@@ -93,17 +87,13 @@ export const getMyWorkspaces = async (req: Request, res: Response): Promise<void
     .select('-members')
     .sort({ createdAt: -1 });
 
-  // Get project count for each workspace
   const workspacesWithStats = await Promise.all(
     workspaces.map(async (ws) => {
       const projectCount = await Project.countDocuments({
         workspace: ws._id,
         isDeleted: false,
       });
-      return {
-        ...ws.toObject(),
-        projectCount,
-      };
+      return { ...ws.toObject(), projectCount };
     })
   );
 
@@ -128,9 +118,8 @@ export const getWorkspaceBySlug = async (req: Request, res: Response): Promise<v
     return;
   }
 
-  // Check if user is member
   const isMember = workspace.members.some(
-    (m) => m.user._id.toString() === userId
+    (m: any) => m.user._id.toString() === userId
   );
 
   if (!isMember) {
@@ -138,7 +127,6 @@ export const getWorkspaceBySlug = async (req: Request, res: Response): Promise<v
     return;
   }
 
-  // Get project count
   const projectCount = await Project.countDocuments({
     workspace: workspace._id,
     isDeleted: false,
@@ -146,10 +134,7 @@ export const getWorkspaceBySlug = async (req: Request, res: Response): Promise<v
 
   successResponse({
     res,
-    data: {
-      ...workspace.toObject(),
-      projectCount,
-    },
+    data: { ...workspace.toObject(), projectCount },
     message: 'Workspace fetched successfully',
   });
 };
@@ -157,16 +142,14 @@ export const getWorkspaceBySlug = async (req: Request, res: Response): Promise<v
 // Update workspace
 export const updateWorkspace = async (req: Request, res: Response): Promise<void> => {
   const { workspaceId } = req.params;
-  const updates = updateWorkspaceSchema.parse(req.body).body;
+  const updates = updateWorkspaceSchema.parse(req.body);
 
   const workspace = await Workspace.findById(workspaceId);
-
   if (!workspace) {
     errorResponse({ res, message: 'Workspace not found', statusCode: 404 });
     return;
   }
 
-  // Check ownership
   if (workspace.owner.toString() !== req.userId) {
     const member = workspace.members.find(
       (m) => m.user.toString() === req.userId && m.role === 'admin'
@@ -177,18 +160,13 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
     }
   }
 
-  // Apply updates
   Object.assign(workspace, updates);
   await workspace.save();
 
   await workspace.populate('owner', 'name email avatar');
   await workspace.populate('members.user', 'name email avatar');
 
-  successResponse({
-    res,
-    data: workspace,
-    message: 'Workspace updated successfully',
-  });
+  successResponse({ res, data: workspace, message: 'Workspace updated successfully' });
 };
 
 // Delete workspace
@@ -196,7 +174,6 @@ export const deleteWorkspace = async (req: Request, res: Response): Promise<void
   const { workspaceId } = req.params;
 
   const workspace = await Workspace.findById(workspaceId);
-
   if (!workspace) {
     errorResponse({ res, message: 'Workspace not found', statusCode: 404 });
     return;
@@ -207,15 +184,10 @@ export const deleteWorkspace = async (req: Request, res: Response): Promise<void
     return;
   }
 
-  // Soft delete
   workspace.isDeleted = true;
   await workspace.save();
 
-  successResponse({
-    res,
-    data: null,
-    message: 'Workspace deleted successfully',
-  });
+  successResponse({ res, data: null, message: 'Workspace deleted successfully' });
 };
 
 // Get workspace members
@@ -230,9 +202,8 @@ export const getWorkspaceMembers = async (req: Request, res: Response): Promise<
     return;
   }
 
-  // Check if user is member
   const isMember = workspace.members.some(
-    (m) => m.user._id.toString() === req.userId
+    (m: any) => m.user._id.toString() === req.userId
   );
 
   if (!isMember) {
@@ -240,31 +211,24 @@ export const getWorkspaceMembers = async (req: Request, res: Response): Promise<
     return;
   }
 
-  successResponse({
-    res,
-    data: workspace.members,
-    message: 'Members fetched successfully',
-  });
+  successResponse({ res, data: workspace.members, message: 'Members fetched successfully' });
 };
 
 // Invite member by email
 export const inviteMemberByEmail = async (req: Request, res: Response): Promise<void> => {
   const { workspaceId } = req.params;
-  const { email, role } = inviteMemberSchema.parse(req.body).body;
+  const { email, role } = inviteMemberSchema.parse(req.body);
 
-  const workspace = await Workspace.findById(workspaceId)
-    .populate('owner', 'name email');
+  const workspace = await Workspace.findById(workspaceId).populate('owner', 'name email');
 
   if (!workspace) {
     errorResponse({ res, message: 'Workspace not found', statusCode: 404 });
     return;
   }
 
-  // Check if user exists
   const existingUser = await User.findOne({ email: email.toLowerCase() });
 
   if (existingUser) {
-    // Check if already a member
     const isAlreadyMember = workspace.members.some(
       (m) => m.user.toString() === existingUser._id.toString()
     );
@@ -274,7 +238,6 @@ export const inviteMemberByEmail = async (req: Request, res: Response): Promise<
       return;
     }
 
-    // Add directly
     workspace.members.push({
       user: existingUser._id,
       role: role || 'member',
@@ -291,13 +254,11 @@ export const inviteMemberByEmail = async (req: Request, res: Response): Promise<
     return;
   }
 
-  // Send invite email
   const inviteToken = uuidv4();
 
-  // Store invite in Redis
   await redis.setex(
     `invite:${inviteToken}`,
-    60 * 60 * 24 * 7, // 7 days
+    60 * 60 * 24 * 7,
     JSON.stringify({
       email: email.toLowerCase(),
       workspaceId,
@@ -328,19 +289,16 @@ export const changeMemberRole = async (req: Request, res: Response): Promise<voi
   const { role } = req.body;
 
   const workspace = await Workspace.findById(workspaceId);
-
   if (!workspace) {
     errorResponse({ res, message: 'Workspace not found', statusCode: 404 });
     return;
   }
 
-  // Cannot change owner's role
   if (workspace.owner.toString() === memberId) {
     errorResponse({ res, message: 'Cannot change owner role', statusCode: 400 });
     return;
   }
 
-  // Find member
   const memberIdx = workspace.members.findIndex(
     (m) => m.user.toString() === memberId
   );
@@ -353,11 +311,7 @@ export const changeMemberRole = async (req: Request, res: Response): Promise<voi
   workspace.members[memberIdx].role = role;
   await workspace.save();
 
-  successResponse({
-    res,
-    data: { memberId, role },
-    message: 'Role updated successfully',
-  });
+  successResponse({ res, data: { memberId, role }, message: 'Role updated successfully' });
 };
 
 // Remove member
@@ -365,36 +319,28 @@ export const removeMember = async (req: Request, res: Response): Promise<void> =
   const { workspaceId, memberId } = req.params;
 
   const workspace = await Workspace.findById(workspaceId);
-
   if (!workspace) {
     errorResponse({ res, message: 'Workspace not found', statusCode: 404 });
     return;
   }
 
-  // Cannot remove owner
   if (workspace.owner.toString() === memberId) {
     errorResponse({ res, message: 'Cannot remove owner', statusCode: 400 });
     return;
   }
 
-  // Remove from workspace members
   workspace.members = workspace.members.filter(
     (m) => m.user.toString() !== memberId
   );
 
   await workspace.save();
 
-  // Remove from all projects in workspace
   await Project.updateMany(
     { workspace: workspaceId },
     { $pull: { members: { user: memberId } } }
   );
 
-  successResponse({
-    res,
-    data: null,
-    message: 'Member removed successfully',
-  });
+  successResponse({ res, data: null, message: 'Member removed successfully' });
 };
 
 // Accept invite
@@ -403,29 +349,27 @@ export const acceptInvite = async (req: Request, res: Response): Promise<void> =
   const userId = req.userId;
 
   const inviteData = await redis.get(`invite:${token}`);
-
   if (!inviteData) {
     errorResponse({ res, message: 'Invalid or expired invite', statusCode: 400 });
     return;
   }
 
-  const { email, workspaceId, role } = JSON.parse(inviteData as string);
+  // ✅ Handle both string and object (Upstash auto-parse)
+  const parsed = typeof inviteData === 'string' ? JSON.parse(inviteData) : inviteData;
+  const { email, workspaceId, role } = parsed;
 
-  // Check if user email matches
   const user = await User.findById(userId);
   if (!user || user.email !== email) {
     errorResponse({ res, message: 'This invite is for a different email', statusCode: 403 });
     return;
   }
 
-  // Add to workspace
   const workspace = await Workspace.findById(workspaceId);
   if (!workspace) {
     errorResponse({ res, message: 'Workspace not found', statusCode: 404 });
     return;
   }
 
-  // Check if already member
   const isAlreadyMember = workspace.members.some(
     (m) => m.user.toString() === userId
   );
@@ -439,12 +383,7 @@ export const acceptInvite = async (req: Request, res: Response): Promise<void> =
     await workspace.save();
   }
 
-  // Delete invite token
   await redis.del(`invite:${token}`);
 
-  successResponse({
-    res,
-    data: { workspaceId },
-    message: 'Invite accepted successfully',
-  });
+  successResponse({ res, data: { workspaceId }, message: 'Invite accepted successfully' });
 };

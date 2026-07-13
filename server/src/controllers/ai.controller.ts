@@ -1,3 +1,5 @@
+// ai.controller.ts
+
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import {
@@ -16,64 +18,49 @@ import { Sprint } from '../models/Sprint.model';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { redis, RedisKeys, TTL } from '../config/redis';
 
-// Validation schemas
+// ✅ Validation schemas — NO `body:` wrapper
 const chatSchema = z.object({
-  body: z.object({
-    message: z.string().min(1),
-    projectId: z.string(),
-    history: z.array(z.object({
-      role: z.enum(['user', 'assistant']),
-      content: z.string(),
-    })).optional(),
-  }),
+  message: z.string().min(1),
+  projectId: z.string(),
+  history: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+  })).optional(),
 });
 
 const generateDescriptionSchema = z.object({
-  body: z.object({
-    title: z.string().min(1),
-    projectId: z.string(),
-  }),
+  title: z.string().min(1),
+  projectId: z.string(),
 });
 
 const suggestLabelsSchema = z.object({
-  body: z.object({
-    taskId: z.string(),
-    existingLabels: z.array(z.string()),
-  }),
+  taskId: z.string(),
+  existingLabels: z.array(z.string()),
 });
 
 const summarizeCommentsSchema = z.object({
-  body: z.object({
-    taskId: z.string(),
-  }),
+  taskId: z.string(),
 });
 
 const planSprintSchema = z.object({
-  body: z.object({
-    projectId: z.string(),
-    goal: z.string(),
-    capacity: z.number().min(1),
-  }),
+  projectId: z.string(),
+  goal: z.string(),
+  capacity: z.number().min(1),
 });
 
 const riskAnalysisSchema = z.object({
-  body: z.object({
-    projectId: z.string(),
-  }),
+  projectId: z.string(),
 });
 
 const standupSchema = z.object({
-  body: z.object({
-    projectId: z.string().optional(),
-  }),
+  projectId: z.string().optional(),
 });
 
 // Chat with AI (streaming)
 export const chat = async (req: Request, res: Response): Promise<void> => {
-  const { message, projectId, history = [] } = chatSchema.parse(req.body).body;
+  const { message, projectId, history = [] } = chatSchema.parse(req.body);
   const userId = req.userId!;
 
-  // Verify project access
   const project = await Project.findById(projectId)
     .populate('members.user', 'name email avatar')
     .populate('workspace', 'name');
@@ -83,7 +70,6 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Get project context
   const tasks = await Task.find({ project: projectId, isDeleted: false })
     .populate('assignees', 'name email avatar')
     .limit(50);
@@ -113,12 +99,10 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
     })),
   };
 
-  // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  // Stream response
   await chatWithProjectContext(
     message,
     projectData,
@@ -135,7 +119,7 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
 
 // Generate task description
 export const generateDescription = async (req: Request, res: Response): Promise<void> => {
-  const { title, projectId } = generateDescriptionSchema.parse(req.body).body;
+  const { title, projectId } = generateDescriptionSchema.parse(req.body);
 
   const project = await Project.findById(projectId);
   if (!project || project.isDeleted) {
@@ -144,19 +128,14 @@ export const generateDescription = async (req: Request, res: Response): Promise<
   }
 
   const projectContext = `${project.name} - ${project.description}`;
-
   const result = await generateTaskDescription(title, projectContext);
 
-  successResponse({
-    res,
-    data: result,
-    message: 'Description generated',
-  });
+  successResponse({ res, data: result, message: 'Description generated' });
 };
 
 // Suggest labels
 export const getLabelSuggestions = async (req: Request, res: Response): Promise<void> => {
-  const { taskId, existingLabels } = suggestLabelsSchema.parse(req.body).body;
+  const { taskId, existingLabels } = suggestLabelsSchema.parse(req.body);
 
   const task = await Task.findById(taskId);
   if (!task || task.isDeleted) {
@@ -169,17 +148,12 @@ export const getLabelSuggestions = async (req: Request, res: Response): Promise<
     : JSON.stringify(task.description);
 
   const labels = await suggestLabels(task.title, description, existingLabels);
-
-  successResponse({
-    res,
-    data: labels,
-    message: 'Labels suggested',
-  });
+  successResponse({ res, data: labels, message: 'Labels suggested' });
 };
 
 // Summarize comments
 export const getCommentsSummary = async (req: Request, res: Response): Promise<void> => {
-  const { taskId } = summarizeCommentsSchema.parse(req.body).body;
+  const { taskId } = summarizeCommentsSchema.parse(req.body);
 
   const comments = await Comment.find({ task: taskId, isDeleted: false })
     .populate('author', 'name')
@@ -201,17 +175,12 @@ export const getCommentsSummary = async (req: Request, res: Response): Promise<v
   }));
 
   const summary = await summarizeComments(commentsData);
-
-  successResponse({
-    res,
-    data: summary,
-    message: 'Comments summarized',
-  });
+  successResponse({ res, data: summary, message: 'Comments summarized' });
 };
 
 // Plan sprint
 export const planSprintAI = async (req: Request, res: Response): Promise<void> => {
-  const { projectId, goal, capacity } = planSprintSchema.parse(req.body).body;
+  const { projectId, goal, capacity } = planSprintSchema.parse(req.body);
 
   const project = await Project.findById(projectId).populate('members.user', 'name');
   if (!project || project.isDeleted) {
@@ -219,7 +188,6 @@ export const planSprintAI = async (req: Request, res: Response): Promise<void> =
     return;
   }
 
-  // Get backlog tasks
   const backlogTasks = await Task.find({
     project: projectId,
     isDeleted: false,
@@ -232,17 +200,12 @@ export const planSprintAI = async (req: Request, res: Response): Promise<void> =
   }));
 
   const plan = await planSprint(goal, capacity, backlogTasks, teamMembers);
-
-  successResponse({
-    res,
-    data: plan,
-    message: 'Sprint plan generated',
-  });
+  successResponse({ res, data: plan, message: 'Sprint plan generated' });
 };
 
 // Risk analysis
 export const getRiskAnalysis = async (req: Request, res: Response): Promise<void> => {
-  const { projectId } = riskAnalysisSchema.parse(req.body).body;
+  const { projectId } = riskAnalysisSchema.parse(req.body);
 
   const project = await Project.findById(projectId);
   if (!project || project.isDeleted) {
@@ -259,36 +222,26 @@ export const getRiskAnalysis = async (req: Request, res: Response): Promise<void
     activeSprint,
   });
 
-  successResponse({
-    res,
-    data: risks,
-    message: 'Risk analysis complete',
-  });
+  successResponse({ res, data: risks, message: 'Risk analysis complete' });
 };
 
 // Generate standup
 export const getStandup = async (req: Request, res: Response): Promise<void> => {
-  const { projectId } = standupSchema.parse(req.body).body;
+  const { projectId } = standupSchema.parse(req.body);
   const userId = req.userId!;
 
-  // Get user's tasks
   const [completedYesterday, inProgressToday, blockers] = await Promise.all([
-    // Completed yesterday
     Task.find({
       assignees: userId,
-      completedAt: {
-        $gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      },
+      completedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       status: 'Done',
       isDeleted: false,
     }).populate('blockedBy'),
-    // In progress today
     Task.find({
       assignees: userId,
       status: { $in: ['In Progress', 'In Review'] },
       isDeleted: false,
     }).populate('blockedBy'),
-    // Blocked tasks
     Task.find({
       assignees: userId,
       blockedBy: { $exists: true, $ne: [] },
@@ -302,9 +255,5 @@ export const getStandup = async (req: Request, res: Response): Promise<void> => 
     blockers,
   });
 
-  successResponse({
-    res,
-    data: standup,
-    message: 'Standup generated',
-  });
+  successResponse({ res, data: standup, message: 'Standup generated' });
 };

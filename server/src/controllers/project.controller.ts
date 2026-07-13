@@ -13,31 +13,28 @@ const defaultStatuses: ITaskStatus[] = [
   { name: 'Done', color: '#22c55e', order: 4, category: 'done' },
 ];
 
-// Validation schemas
+// ✅ Validation schemas — NO `body:` wrapper
 const createProjectSchema = z.object({
-  body: z.object({
-    name: z.string().min(2).max(100),
-    identifier: z.string().max(5).optional(),
-    description: z.string().max(1000).optional(),
-    color: z.string().optional(),
-    icon: z.string().optional(),
-    template: z.enum(['kanban', 'scrum', 'bug-tracking', 'custom']).optional(),
-    workspaceId: z.string(),
-  }),
+  name: z.string().min(2).max(100),
+  identifier: z.string().max(5).optional(),
+  description: z.string().max(1000).optional(),
+  color: z.string().optional(),
+  icon: z.string().optional(),
+  template: z.enum(['kanban', 'scrum', 'bug-tracking', 'custom']).optional(),
+  workspaceId: z.string(),
 });
 
 const updateProjectSchema = z.object({
-  body: z.object({
-    name: z.string().min(2).max(100).optional(),
-    description: z.string().max(1000).optional(),
-    color: z.string().optional(),
-    icon: z.string().optional(),
-    status: z.enum(['active', 'archived']).optional(),
-  }),
+  name: z.string().min(2).max(100).optional(),
+  description: z.string().max(1000).optional(),
+  color: z.string().optional(),
+  icon: z.string().optional(),
+  status: z.enum(['active', 'archived']).optional(),
 });
 
 // Create project
 export const createProject = async (req: Request, res: Response): Promise<void> => {
+  // ✅ Removed .body
   const {
     name,
     identifier,
@@ -46,7 +43,7 @@ export const createProject = async (req: Request, res: Response): Promise<void> 
     icon,
     template,
     workspaceId,
-  } = createProjectSchema.parse(req.body).body;
+  } = createProjectSchema.parse(req.body);
   const userId = req.userId!;
 
   // Check workspace access
@@ -173,7 +170,7 @@ export const getProjectById = async (req: Request, res: Response): Promise<void>
     (m) => m.user.toString() === userId
   );
   const isProjectMember = project.members.some(
-    (m) => m.user._id.toString() === userId
+    (m: any) => m.user._id.toString() === userId
   );
 
   if (!isWorkspaceMember && !isProjectMember) {
@@ -205,7 +202,8 @@ export const getProjectById = async (req: Request, res: Response): Promise<void>
 // Update project
 export const updateProject = async (req: Request, res: Response): Promise<void> => {
   const { projectId } = req.params;
-  const updates = updateProjectSchema.parse(req.body).body;
+  // ✅ Removed .body
+  const updates = updateProjectSchema.parse(req.body);
 
   const project = await Project.findById(projectId);
 

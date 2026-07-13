@@ -1,3 +1,5 @@
+// sprint.controller.ts
+
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { Sprint, ISprint, SprintStatus } from '../models/Sprint.model';
@@ -7,46 +9,37 @@ import { ActivityLog } from '../models/ActivityLog.model';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { notifySprintStarted, notifySprintCompleted } from '../services/notification.service';
 
-// Validation schemas
+// ✅ Validation schemas — NO `body:` wrapper
 const createSprintSchema = z.object({
-  body: z.object({
-    name: z.string().min(2).max(100),
-    goal: z.string().max(500).optional(),
-    startDate: z.string(),
-    endDate: z.string(),
-    capacity: z.number().min(0).optional(),
-    projectId: z.string(),
-  }),
+  name: z.string().min(2).max(100),
+  goal: z.string().max(500).optional(),
+  startDate: z.string(),
+  endDate: z.string(),
+  capacity: z.number().min(0).optional(),
+  projectId: z.string(),
 });
 
 const updateSprintSchema = z.object({
-  body: z.object({
-    name: z.string().min(2).max(100).optional(),
-    goal: z.string().max(500).optional(),
-    startDate: z.string().optional(),
-    endDate: z.string().optional(),
-    capacity: z.number().min(0).optional(),
-  }),
+  name: z.string().min(2).max(100).optional(),
+  goal: z.string().max(500).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  capacity: z.number().min(0).optional(),
 });
 
 // Create sprint
 export const createSprint = async (req: Request, res: Response): Promise<void> => {
-  const { name, goal, startDate, endDate, capacity, projectId } = createSprintSchema.parse(req.body).body;
+  const { name, goal, startDate, endDate, capacity, projectId } =
+    createSprintSchema.parse(req.body);
   const userId = req.userId!;
 
-  // Check project exists
   const project = await Project.findById(projectId);
   if (!project || project.isDeleted) {
     errorResponse({ res, message: 'Project not found', statusCode: 404 });
     return;
   }
 
-  // Check if there's already an active sprint
-  const activeSprint = await Sprint.findOne({
-    project: projectId,
-    status: 'active',
-  });
-
+  const activeSprint = await Sprint.findOne({ project: projectId, status: 'active' });
   if (activeSprint) {
     errorResponse({
       res,
@@ -86,28 +79,18 @@ export const getSprintsByProject = async (req: Request, res: Response): Promise<
     .populate('createdBy', 'name email avatar')
     .sort({ createdAt: -1 });
 
-  // Get task counts for each sprint
   const sprintsWithStats = await Promise.all(
     sprints.map(async (sprint) => {
       const stats = await Task.aggregate([
-        {
-          $match: {
-            sprint: sprint._id,
-            isDeleted: false,
-          },
-        },
+        { $match: { sprint: sprint._id, isDeleted: false } },
         {
           $group: {
             _id: null,
             total: { $sum: 1 },
-            completed: {
-              $sum: { $cond: [{ $eq: ['$status', 'Done'] }, 1, 0] },
-            },
+            completed: { $sum: { $cond: [{ $eq: ['$status', 'Done'] }, 1, 0] } },
             totalPoints: { $sum: '$storyPoints' },
             completedPoints: {
-              $sum: {
-                $cond: [{ $eq: ['$status', 'Done'] }, '$storyPoints', 0],
-              },
+              $sum: { $cond: [{ $eq: ['$status', 'Done'] }, '$storyPoints', 0] },
             },
           },
         },
@@ -120,18 +103,11 @@ export const getSprintsByProject = async (req: Request, res: Response): Promise<
         completedPoints: 0,
       };
 
-      return {
-        ...sprint.toObject(),
-        stats: sprintStats,
-      };
+      return { ...sprint.toObject(), stats: sprintStats };
     })
   );
 
-  successResponse({
-    res,
-    data: sprintsWithStats,
-    message: 'Sprints fetched successfully',
-  });
+  successResponse({ res, data: sprintsWithStats, message: 'Sprints fetched successfully' });
 };
 
 // Get sprint by ID
@@ -147,7 +123,6 @@ export const getSprintById = async (req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // Get sprint tasks
   const tasks = await Task.find({ sprint: sprintId, isDeleted: false })
     .populate('assignees', 'name email avatar')
     .populate('createdBy', 'name email avatar');
@@ -162,10 +137,9 @@ export const getSprintById = async (req: Request, res: Response): Promise<void> 
 // Update sprint
 export const updateSprint = async (req: Request, res: Response): Promise<void> => {
   const { sprintId } = req.params;
-  const updates = updateSprintSchema.parse(req.body).body;
+  const updates = updateSprintSchema.parse(req.body);
 
   const sprint = await Sprint.findById(sprintId);
-
   if (!sprint) {
     errorResponse({ res, message: 'Sprint not found', statusCode: 404 });
     return;
@@ -177,11 +151,7 @@ export const updateSprint = async (req: Request, res: Response): Promise<void> =
   Object.assign(sprint, updates);
   await sprint.save();
 
-  successResponse({
-    res,
-    data: sprint,
-    message: 'Sprint updated successfully',
-  });
+  successResponse({ res, data: sprint, message: 'Sprint updated successfully' });
 };
 
 // Start sprint
@@ -191,13 +161,11 @@ export const startSprint = async (req: Request, res: Response): Promise<void> =>
   const io = req.app.get('io');
 
   const sprint = await Sprint.findById(sprintId);
-
   if (!sprint) {
     errorResponse({ res, message: 'Sprint not found', statusCode: 404 });
     return;
   }
 
-  // Check if another sprint is active
   const activeSprint = await Sprint.findOne({
     project: sprint.project,
     status: 'active',
@@ -205,27 +173,22 @@ export const startSprint = async (req: Request, res: Response): Promise<void> =>
   });
 
   if (activeSprint) {
-    errorResponse({
-      res,
-      message: 'Another sprint is already active',
-      statusCode: 400,
-    });
+    errorResponse({ res, message: 'Another sprint is already active', statusCode: 400 });
     return;
   }
 
   sprint.status = 'active';
   await sprint.save();
 
-  // Get project members
   const project = await Project.findById(sprint.project).populate('members.user');
 
-  // Send notifications
   if (project && project.members) {
-    const memberIds = project.members.map((m: any) => m.user._id.toString()).filter((id: string) => id !== userId);
+    const memberIds = project.members
+      .map((m: any) => m.user._id.toString())
+      .filter((id: string) => id !== userId);
     await notifySprintStarted(memberIds, sprint, project);
   }
 
-  // Create activity log
   await ActivityLog.create({
     project: sprint.project,
     task: null,
@@ -235,16 +198,11 @@ export const startSprint = async (req: Request, res: Response): Promise<void> =>
     metadata: { sprintId: sprint._id.toString() },
   });
 
-  // Emit socket event
   if (io) {
     io.to(`project:${sprint.project}`).emit('sprint:started', sprint);
   }
 
-  successResponse({
-    res,
-    data: sprint,
-    message: 'Sprint started successfully',
-  });
+  successResponse({ res, data: sprint, message: 'Sprint started successfully' });
 };
 
 // Complete sprint
@@ -255,7 +213,6 @@ export const completeSprint = async (req: Request, res: Response): Promise<void>
   const io = req.app.get('io');
 
   const sprint = await Sprint.findById(sprintId);
-
   if (!sprint) {
     errorResponse({ res, message: 'Sprint not found', statusCode: 404 });
     return;
@@ -270,7 +227,6 @@ export const completeSprint = async (req: Request, res: Response): Promise<void>
     return;
   }
 
-  // Calculate velocity
   const completedTasks = await Task.find({
     sprint: sprintId,
     status: 'Done',
@@ -284,7 +240,6 @@ export const completeSprint = async (req: Request, res: Response): Promise<void>
   sprint.velocity = velocity;
   await sprint.save();
 
-  // Move incomplete tasks
   const incompleteTasks = await Task.find({
     sprint: sprintId,
     status: { $ne: 'Done' },
@@ -298,7 +253,6 @@ export const completeSprint = async (req: Request, res: Response): Promise<void>
         { $set: { sprint: moveToSprintId } }
       );
     } else {
-      // Move to backlog (remove sprint)
       await Task.updateMany(
         { sprint: sprintId, status: { $ne: 'Done' }, isDeleted: false },
         { $set: { sprint: null } }
@@ -306,16 +260,15 @@ export const completeSprint = async (req: Request, res: Response): Promise<void>
     }
   }
 
-  // Get project members
   const project = await Project.findById(sprint.project).populate('members.user');
 
-  // Send notifications
   if (project && project.members) {
-    const memberIds = project.members.map((m: any) => m.user._id.toString()).filter((id: string) => id !== userId);
+    const memberIds = project.members
+      .map((m: any) => m.user._id.toString())
+      .filter((id: string) => id !== userId);
     await notifySprintCompleted(memberIds, sprint, project);
   }
 
-  // Create activity log
   await ActivityLog.create({
     project: sprint.project,
     task: null,
@@ -325,18 +278,13 @@ export const completeSprint = async (req: Request, res: Response): Promise<void>
     metadata: { sprintId: sprint._id.toString(), velocity },
   });
 
-  // Emit socket event
   if (io) {
     io.to(`project:${sprint.project}`).emit('sprint:completed', sprint);
   }
 
   successResponse({
     res,
-    data: {
-      sprint,
-      velocity,
-      movedTasks: incompleteTasks.length,
-    },
+    data: { sprint, velocity, movedTasks: incompleteTasks.length },
     message: 'Sprint completed successfully',
   });
 };
@@ -346,53 +294,34 @@ export const deleteSprint = async (req: Request, res: Response): Promise<void> =
   const { sprintId } = req.params;
 
   const sprint = await Sprint.findById(sprintId);
-
   if (!sprint) {
     errorResponse({ res, message: 'Sprint not found', statusCode: 404 });
     return;
   }
 
   if (sprint.status === 'active') {
-    errorResponse({
-      res,
-      message: 'Cannot delete an active sprint',
-      statusCode: 400,
-    });
+    errorResponse({ res, message: 'Cannot delete an active sprint', statusCode: 400 });
     return;
   }
 
-  // Remove sprint from tasks
   await Task.updateMany({ sprint: sprintId }, { $set: { sprint: null } });
-
   await Sprint.findByIdAndDelete(sprintId);
 
-  successResponse({
-    res,
-    data: null,
-    message: 'Sprint deleted successfully',
-  });
+  successResponse({ res, data: null, message: 'Sprint deleted successfully' });
 };
 
 // Get active sprint
 export const getActiveSprint = async (req: Request, res: Response): Promise<void> => {
   const { projectId } = req.params;
 
-  const sprint = await Sprint.findOne({
-    project: projectId,
-    status: 'active',
-  })
+  const sprint = await Sprint.findOne({ project: projectId, status: 'active' })
     .populate('createdBy', 'name email avatar');
 
   if (!sprint) {
-    successResponse({
-      res,
-      data: null,
-      message: 'No active sprint',
-    });
+    successResponse({ res, data: null, message: 'No active sprint' });
     return;
   }
 
-  // Get sprint tasks
   const tasks = await Task.find({ sprint: sprint._id, isDeleted: false })
     .populate('assignees', 'name email avatar')
     .sort({ order: 1 });

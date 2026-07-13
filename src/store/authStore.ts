@@ -22,7 +22,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
       isAuthenticated: false,
-      isLoading: true,
+      isLoading: false, // ✅ CHANGED: false by default
 
       setUser: (user) => set({ user }),
       setAccessToken: (token) => set({ accessToken: token }),
@@ -41,6 +41,7 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           accessToken: null,
           isAuthenticated: false,
+          isLoading: false,
         });
       },
 
@@ -50,20 +51,34 @@ export const useAuthStore = create<AuthState>()(
         })),
 
       fetchUser: async () => {
+        // ✅ Check if we have a token first
+        const token = get().accessToken;
+        if (!token) {
+          set({ isLoading: false, isAuthenticated: false, user: null });
+          return;
+        }
+
         try {
           set({ isLoading: true });
           const user = await authService.getMe();
           set({ user, isAuthenticated: true, isLoading: false });
         } catch {
-          set({ user: null, isAuthenticated: false, isLoading: false });
+          set({
+            user: null,
+            accessToken: null,
+            isAuthenticated: false,
+            isLoading: false,
+          });
         }
       },
     }),
     {
       name: 'nexspace-auth',
       storage: createJSONStorage(() => localStorage),
+      // ✅ Persist accessToken too!
       partialize: (state) => ({
         user: state.user,
+        accessToken: state.accessToken,
         isAuthenticated: state.isAuthenticated,
       }),
     }

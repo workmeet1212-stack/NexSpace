@@ -25,6 +25,7 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string(),
   GROQ_API_KEY: z.string(),
   EMAIL_FROM: z.string().default('onboarding@resend.dev'),
+  SERVER_URL: z.string()
 });
 
 export const env = envSchema.parse(process.env);

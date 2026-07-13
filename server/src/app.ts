@@ -12,6 +12,7 @@ import { logger } from './utils/logger';
 import { initializeSocket } from './socket';
 import { errorHandler, notFound } from './middleware/errorHandler.middleware';
 import { apiLimiter } from './middleware/rateLimit.middleware';
+import 'express-async-errors'; 
 
 // Load environment variables
 config();

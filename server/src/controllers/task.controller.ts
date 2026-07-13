@@ -1,3 +1,5 @@
+// task.controller.ts
+
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { Task, ITask, Priority } from '../models/Task.model';
@@ -6,60 +8,52 @@ import { ActivityLog, ActivityAction } from '../models/ActivityLog.model';
 import { successResponse, errorResponse, paginatedResponse } from '../utils/apiResponse';
 import mongoose from 'mongoose';
 
-// Validation schemas
+// ✅ Validation schemas — NO `body:` wrapper
 const createTaskSchema = z.object({
-  body: z.object({
-    title: z.string().min(1).max(500),
-    description: z.any().optional(),
-    status: z.string().default('Todo'),
-    priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']).default('none'),
-    projectId: z.string(),
-    assignees: z.array(z.string()).optional(),
-    labels: z.array(z.string()).optional(),
-    dueDate: z.string().optional().nullable(),
-    startDate: z.string().optional().nullable(),
-    storyPoints: z.number().min(0).max(100).optional(),
-    parentTask: z.string().optional().nullable(),
-    sprint: z.string().optional().nullable(),
-  }),
+  title: z.string().min(1).max(500),
+  description: z.any().optional(),
+  status: z.string().default('Todo'),
+  priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']).default('none'),
+  projectId: z.string(),
+  assignees: z.array(z.string()).optional(),
+  labels: z.array(z.string()).optional(),
+  dueDate: z.string().optional().nullable(),
+  startDate: z.string().optional().nullable(),
+  storyPoints: z.number().min(0).max(100).optional(),
+  parentTask: z.string().optional().nullable(),
+  sprint: z.string().optional().nullable(),
 });
 
 const updateTaskSchema = z.object({
-  body: z.object({
-    title: z.string().min(1).max(500).optional(),
-    description: z.any().optional(),
-    status: z.string().optional(),
-    priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']).optional(),
-    assignees: z.array(z.string()).optional(),
-    labels: z.array(z.string()).optional(),
-    dueDate: z.string().optional().nullable(),
-    startDate: z.string().optional().nullable(),
-    storyPoints: z.number().min(0).max(100).optional(),
-    sprint: z.string().optional().nullable(),
-  }),
+  title: z.string().min(1).max(500).optional(),
+  description: z.any().optional(),
+  status: z.string().optional(),
+  priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']).optional(),
+  assignees: z.array(z.string()).optional(),
+  labels: z.array(z.string()).optional(),
+  dueDate: z.string().optional().nullable(),
+  startDate: z.string().optional().nullable(),
+  storyPoints: z.number().min(0).max(100).optional(),
+  sprint: z.string().optional().nullable(),
 });
 
 const moveTaskSchema = z.object({
-  body: z.object({
-    newStatus: z.string(),
-    newOrder: z.number(),
-  }),
+  newStatus: z.string(),
+  newOrder: z.number(),
 });
 
 // Create task
 export const createTask = async (req: Request, res: Response): Promise<void> => {
-  const taskData = createTaskSchema.parse(req.body).body;
+  const taskData = createTaskSchema.parse(req.body);
   const userId = req.userId!;
   const io = req.app.get('io');
 
-  // Get project
   const project = await Project.findById(taskData.projectId);
   if (!project || project.isDeleted) {
     errorResponse({ res, message: 'Project not found', statusCode: 404 });
     return;
   }
 
-  // Get max order for the status
   const maxOrder = await Task.findOne({
     project: taskData.projectId,
     status: taskData.status,
@@ -80,11 +74,9 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
 
   await task.save();
 
-  // Populate
   await task.populate('assignees', 'name email avatar');
   await task.populate('createdBy', 'name email avatar');
 
-  // Create activity log
   await ActivityLog.create({
     project: project._id,
     task: task._id,
@@ -94,7 +86,6 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
     metadata: { taskId: task.taskId },
   });
 
-  // Emit socket event
   if (io) {
     io.to(`project:${taskData.projectId}`).emit('task:created', task);
   }
@@ -120,10 +111,7 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
     limit = '50',
   } = req.query;
 
-  const query: any = {
-    project: projectId,
-    isDeleted: false,
-  };
+  const query: any = { project: projectId, isDeleted: false };
 
   if (status) query.status = status;
   if (priority) query.priority = priority;
@@ -176,28 +164,22 @@ export const getTaskById = async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
-  successResponse({
-    res,
-    data: task,
-    message: 'Task fetched successfully',
-  });
+  successResponse({ res, data: task, message: 'Task fetched successfully' });
 };
 
 // Update task
 export const updateTask = async (req: Request, res: Response): Promise<void> => {
   const { taskId } = req.params;
-  const updates = updateTaskSchema.parse(req.body).body;
+  const updates: any = updateTaskSchema.parse(req.body);
   const userId = req.userId!;
   const io = req.app.get('io');
 
   const task = await Task.findById(taskId);
-
   if (!task || task.isDeleted) {
     errorResponse({ res, message: 'Task not found', statusCode: 404 });
     return;
   }
 
-  // Track changes for activity log
   const changes: Array<{ field: string; oldValue: any; newValue: any }> = [];
 
   if (updates.title && updates.title !== task.title) {
@@ -215,7 +197,6 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
     changes.push({ field: 'priority', oldValue: task.priority, newValue: updates.priority });
   }
 
-  // Apply updates
   Object.keys(updates).forEach((key) => {
     const value = updates[key as keyof typeof updates];
     if (value !== undefined) {
@@ -229,7 +210,6 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
 
   await task.save();
 
-  // Create activity logs
   for (const change of changes) {
     await ActivityLog.create({
       project: task.project,
@@ -242,20 +222,14 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
     });
   }
 
-  // Populate
   await task.populate('assignees', 'name email avatar');
   await task.populate('createdBy', 'name email avatar');
 
-  // Emit socket event
   if (io) {
     io.to(`project:${task.project}`).emit('task:updated', task);
   }
 
-  successResponse({
-    res,
-    data: task,
-    message: 'Task updated successfully',
-  });
+  successResponse({ res, data: task, message: 'Task updated successfully' });
 };
 
 // Bulk update tasks
@@ -269,11 +243,9 @@ export const bulkUpdateTasks = async (req: Request, res: Response): Promise<void
     { $set: updates }
   );
 
-  // Get updated tasks
   const tasks = await Task.find({ _id: { $in: taskIds } })
     .populate('assignees', 'name email avatar');
 
-  // Emit socket events
   if (io) {
     tasks.forEach((task) => {
       io.to(`project:${task.project}`).emit('task:updated', task);
@@ -290,12 +262,11 @@ export const bulkUpdateTasks = async (req: Request, res: Response): Promise<void
 // Move task (drag and drop)
 export const moveTask = async (req: Request, res: Response): Promise<void> => {
   const { taskId } = req.params;
-  const { newStatus, newOrder } = moveTaskSchema.parse(req.body).body;
+  const { newStatus, newOrder } = moveTaskSchema.parse(req.body);
   const userId = req.userId!;
   const io = req.app.get('io');
 
   const task = await Task.findById(taskId);
-
   if (!task || task.isDeleted) {
     errorResponse({ res, message: 'Task not found', statusCode: 404 });
     return;
@@ -303,7 +274,6 @@ export const moveTask = async (req: Request, res: Response): Promise<void> => {
 
   const oldStatus = task.status;
 
-  // Update the moved task
   task.status = newStatus;
   task.order = newOrder;
   if (newStatus === 'Done') {
@@ -311,7 +281,6 @@ export const moveTask = async (req: Request, res: Response): Promise<void> => {
   }
   await task.save();
 
-  // Reorder other tasks in the new column
   await Task.updateMany(
     {
       project: task.project,
@@ -323,7 +292,6 @@ export const moveTask = async (req: Request, res: Response): Promise<void> => {
     { $inc: { order: 1 } }
   );
 
-  // Create activity log if status changed
   if (oldStatus !== newStatus) {
     await ActivityLog.create({
       project: task.project,
@@ -336,7 +304,6 @@ export const moveTask = async (req: Request, res: Response): Promise<void> => {
     });
   }
 
-  // Emit socket event
   if (io) {
     io.to(`project:${task.project}`).emit('task:moved', {
       taskId: task._id,
@@ -346,21 +313,16 @@ export const moveTask = async (req: Request, res: Response): Promise<void> => {
     });
   }
 
-  successResponse({
-    res,
-    data: task,
-    message: 'Task moved successfully',
-  });
+  successResponse({ res, data: task, message: 'Task moved successfully' });
 };
 
-// Delete task (soft delete)
+// Delete task
 export const deleteTask = async (req: Request, res: Response): Promise<void> => {
   const { taskId } = req.params;
   const userId = req.userId!;
   const io = req.app.get('io');
 
   const task = await Task.findById(taskId);
-
   if (!task) {
     errorResponse({ res, message: 'Task not found', statusCode: 404 });
     return;
@@ -370,7 +332,6 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
   task.deletedAt = new Date();
   await task.save();
 
-  // Create activity log
   await ActivityLog.create({
     project: task.project,
     task: task._id,
@@ -380,7 +341,6 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
     metadata: { taskId: task.taskId },
   });
 
-  // Emit socket event
   if (io) {
     io.to(`project:${task.project}`).emit('task:deleted', {
       taskId: task._id,
@@ -388,11 +348,7 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
     });
   }
 
-  successResponse({
-    res,
-    data: null,
-    message: 'Task deleted successfully',
-  });
+  successResponse({ res, data: null, message: 'Task deleted successfully' });
 };
 
 // Restore task
@@ -400,7 +356,6 @@ export const restoreTask = async (req: Request, res: Response): Promise<void> =>
   const { taskId } = req.params;
 
   const task = await Task.findById(taskId);
-
   if (!task) {
     errorResponse({ res, message: 'Task not found', statusCode: 404 });
     return;
@@ -410,11 +365,7 @@ export const restoreTask = async (req: Request, res: Response): Promise<void> =>
   task.deletedAt = null;
   await task.save();
 
-  successResponse({
-    res,
-    data: task,
-    message: 'Task restored successfully',
-  });
+  successResponse({ res, data: task, message: 'Task restored successfully' });
 };
 
 // Get activity log for task
@@ -426,9 +377,5 @@ export const getTaskActivity = async (req: Request, res: Response): Promise<void
     .sort({ createdAt: -1 })
     .limit(50);
 
-  successResponse({
-    res,
-    data: activities,
-    message: 'Activity log fetched successfully',
-  });
+  successResponse({ res, data: activities, message: 'Activity log fetched successfully' });
 };

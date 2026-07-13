@@ -46,7 +46,10 @@ export const generateTokens = async (userId: string): Promise<GeneratedTokens> =
 export const verifyAccessToken = (token: string): TokenPayload => {
   try {
     return jwt.verify(token, env.JWT_ACCESS_SECRET) as TokenPayload;
-  } catch (error) {
+  } catch (error: any) {
+    console.log('🔴 JWT Verify Error:', error.name, error.message);
+    console.log('🔴 Token:', token.substring(0, 50) + '...');
+    console.log('🔴 Secret first 10 chars:', env.JWT_ACCESS_SECRET.substring(0, 10));
     throw new Error('Invalid or expired access token');
   }
 };
@@ -181,10 +184,19 @@ export const cacheUser = async (user: IUser): Promise<void> => {
 export const getCachedUser = async (userId: string): Promise<any | null> => {
   const cacheKey = RedisKeys.cacheUser(userId);
   const cached = await redis.get(cacheKey);
-  if (cached) {
-    return JSON.parse(cached as string);
+  
+  if (!cached) return null;
+
+  // ✅ Handle both string and object
+  if (typeof cached === 'string') {
+    try {
+      return JSON.parse(cached);
+    } catch {
+      return null;
+    }
   }
-  return null;
+  
+  return cached; // Already parsed
 };
 
 export const invalidateUserCache = async (userId: string): Promise<void> => {

@@ -1,3 +1,5 @@
+// comment.controller.ts
+
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { Comment, IComment } from '../models/Comment.model';
@@ -7,35 +9,29 @@ import { successResponse, errorResponse } from '../utils/apiResponse';
 import { notifyMention, notifyTaskComment } from '../services/notification.service';
 import mongoose from 'mongoose';
 
-// Validation schemas
+// ✅ Validation schemas — NO `body:` wrapper
 const createCommentSchema = z.object({
-  body: z.object({
-    content: z.any(),
-    taskId: z.string(),
-    parentComment: z.string().optional(),
-  }),
+  content: z.any(),
+  taskId: z.string(),
+  parentComment: z.string().optional(),
 });
 
 const updateCommentSchema = z.object({
-  body: z.object({
-    content: z.any(),
-  }),
+  content: z.any(),
 });
 
 // Create comment
 export const createComment = async (req: Request, res: Response): Promise<void> => {
-  const { content, taskId, parentComment } = createCommentSchema.parse(req.body).body;
+  const { content, taskId, parentComment } = createCommentSchema.parse(req.body);
   const userId = req.userId!;
   const io = req.app.get('io');
 
-  // Verify task exists
   const task = await Task.findById(taskId);
   if (!task || task.isDeleted) {
     errorResponse({ res, message: 'Task not found', statusCode: 404 });
     return;
   }
 
-  // Extract mentions from content
   const mentions: string[] = [];
   if (content && Array.isArray(content.content)) {
     const extractMentions = (nodes: any[]) => {
@@ -60,18 +56,15 @@ export const createComment = async (req: Request, res: Response): Promise<void> 
 
   await comment.save();
 
-  // Update parent comment's replies array
   if (parentComment) {
     await Comment.findByIdAndUpdate(parentComment, {
       $push: { replies: comment._id },
     });
   }
 
-  // Populate
   await comment.populate('author', 'name email avatar');
   await comment.populate('mentions', 'name email avatar');
 
-  // Create activity log
   await ActivityLog.create({
     project: task.project,
     task: taskId,
@@ -81,15 +74,12 @@ export const createComment = async (req: Request, res: Response): Promise<void> 
     metadata: { taskId: task.taskId, commentId: comment._id.toString() },
   });
 
-  // Send notifications
   const commenter = await mongoose.model('User').findById(userId);
 
-  // Notify mentioned users
   if (mentions.length > 0) {
     await notifyMention(mentions, task, commenter?.name || 'Someone', comment._id.toString());
   }
 
-  // Notify task assignees and creator (excluding author)
   const notifyUsers = [
     ...task.assignees.map((a) => a.toString()),
     task.createdBy.toString(),
@@ -104,7 +94,6 @@ export const createComment = async (req: Request, res: Response): Promise<void> 
     );
   }
 
-  // Emit socket event
   if (io) {
     io.to(`project:${task.project}`).emit('comment:new', comment);
   }
@@ -121,15 +110,11 @@ export const createComment = async (req: Request, res: Response): Promise<void> 
 export const getComments = async (req: Request, res: Response): Promise<void> => {
   const { taskId } = req.params;
 
-  const comments = await Comment.find({
-    task: taskId,
-    isDeleted: false,
-  })
+  const comments = await Comment.find({ task: taskId, isDeleted: false })
     .populate('author', 'name email avatar')
     .populate('mentions', 'name email avatar')
     .sort({ createdAt: 1 });
 
-  // Build threaded structure
   const commentMap = new Map();
   const rootComments: IComment[] = [];
 
@@ -144,36 +129,28 @@ export const getComments = async (req: Request, res: Response): Promise<void> =>
     const commentObj = commentMap.get(comment._id.toString());
     if (comment.parentComment) {
       const parent = commentMap.get(comment.parentComment.toString());
-      if (parent) {
-        parent.replies.push(commentObj);
-      }
+      if (parent) parent.replies.push(commentObj);
     } else {
       rootComments.push(commentObj as IComment);
     }
   });
 
-  successResponse({
-    res,
-    data: rootComments,
-    message: 'Comments fetched successfully',
-  });
+  successResponse({ res, data: rootComments, message: 'Comments fetched successfully' });
 };
 
 // Update comment
 export const updateComment = async (req: Request, res: Response): Promise<void> => {
   const { commentId } = req.params;
-  const { content } = updateCommentSchema.parse(req.body).body;
+  const { content } = updateCommentSchema.parse(req.body);
   const userId = req.userId!;
   const io = req.app.get('io');
 
   const comment = await Comment.findById(commentId);
-
   if (!comment || comment.isDeleted) {
     errorResponse({ res, message: 'Comment not found', statusCode: 404 });
     return;
   }
 
-  // Check author
   if (comment.author.toString() !== userId) {
     errorResponse({ res, message: 'Not authorized to edit this comment', statusCode: 403 });
     return;
@@ -186,31 +163,24 @@ export const updateComment = async (req: Request, res: Response): Promise<void> 
 
   await comment.populate('author', 'name email avatar');
 
-  // Emit socket event
   if (io) {
     io.to(`project:${(comment as any).project}`).emit('comment:updated', comment);
   }
 
-  successResponse({
-    res,
-    data: comment,
-    message: 'Comment updated successfully',
-  });
+  successResponse({ res, data: comment, message: 'Comment updated successfully' });
 };
 
-// Delete comment (soft delete)
+// Delete comment
 export const deleteComment = async (req: Request, res: Response): Promise<void> => {
   const { commentId } = req.params;
   const userId = req.userId!;
 
   const comment = await Comment.findById(commentId);
-
   if (!comment) {
     errorResponse({ res, message: 'Comment not found', statusCode: 404 });
     return;
   }
 
-  // Check author
   if (comment.author.toString() !== userId) {
     errorResponse({ res, message: 'Not authorized to delete this comment', statusCode: 403 });
     return;
@@ -220,11 +190,7 @@ export const deleteComment = async (req: Request, res: Response): Promise<void> 
   comment.deletedAt = new Date();
   await comment.save();
 
-  successResponse({
-    res,
-    data: null,
-    message: 'Comment deleted successfully',
-  });
+  successResponse({ res, data: null, message: 'Comment deleted successfully' });
 };
 
 // Add reaction
@@ -234,19 +200,16 @@ export const addReaction = async (req: Request, res: Response): Promise<void> =>
   const userId = req.userId!;
 
   const comment = await Comment.findById(commentId);
-
   if (!comment || comment.isDeleted) {
     errorResponse({ res, message: 'Comment not found', statusCode: 404 });
     return;
   }
 
-  // Find existing reaction
   const existingReaction = comment.reactions.find(
     (r) => r.emoji === emoji && r.users.some((u) => u.toString() === userId)
   );
 
   if (existingReaction) {
-    // Remove reaction
     existingReaction.users = existingReaction.users.filter(
       (u) => u.toString() !== userId
     );
@@ -254,23 +217,14 @@ export const addReaction = async (req: Request, res: Response): Promise<void> =>
       comment.reactions = comment.reactions.filter((r) => r.emoji !== emoji);
     }
   } else {
-    // Add reaction
     const reaction = comment.reactions.find((r) => r.emoji === emoji);
     if (reaction) {
       reaction.users.push(userId as any);
     } else {
-      comment.reactions.push({
-        emoji,
-        users: [userId as any],
-      });
+      comment.reactions.push({ emoji, users: [userId as any] });
     }
   }
 
   await comment.save();
-
-  successResponse({
-    res,
-    data: comment.reactions,
-    message: 'Reaction updated',
-  });
+  successResponse({ res, data: comment.reactions, message: 'Reaction updated' });
 };

@@ -58,7 +58,7 @@ const NotificationDropdown: React.FC = () => {
     },
   });
 
-  const unreadCount = notifications.filter((n: Notification) => !n.read).length;
+  const unreadCount = notifications?.length > 0 ? notifications.filter((n: Notification) => !n.read).length : [];
 
   const handleMarkAsRead = (notificationId: string) => {
     markAsReadMutation.mutate(notificationId);

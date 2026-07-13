@@ -32,7 +32,7 @@ passport.use(
     {
       clientID: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
-      callbackURL: `${env.CLIENT_URL}/api/v1/auth/google/callback`,
+      callbackURL: `${env.SERVER_URL}/api/v1/auth/google/callback`,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -83,7 +83,7 @@ passport.use(
     {
       clientID: env.GITHUB_CLIENT_ID,
       clientSecret: env.GITHUB_CLIENT_SECRET,
-      callbackURL: `${env.CLIENT_URL}/api/v1/auth/github/callback`,
+      callbackURL: `${env.SERVER_URL}/api/v1/auth/github/callback`,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
