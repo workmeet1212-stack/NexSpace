@@ -10,7 +10,7 @@ config({ path: resolve(__dirname, '../../../.env') });
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('3001'),
-  CLIENT_URL: z.string().default('http://localhost:5173'),
+  CLIENT_URL: z.string().default('https://nex-space-mj.vercel.app'),
   MONGODB_URI: z.string(),
   UPSTASH_REDIS_REST_URL: z.string(),
   UPSTASH_REDIS_REST_TOKEN: z.string(),

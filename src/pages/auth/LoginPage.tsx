@@ -53,11 +53,11 @@ const LoginPage: React.FC = () => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = 'http://localhost:3001/api/v1/auth/google';
+    window.location.href = 'https://nex-space-api.vercel.app/api/v1/auth/google';
   };
 
   const handleGithubLogin = () => {
-    window.location.href = 'http://localhost:3001/api/v1/auth/github';
+    window.location.href = 'https://nex-space-api.vercel.app/api/v1/auth/github';
   };
 
   return (

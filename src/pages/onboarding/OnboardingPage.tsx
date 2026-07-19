@@ -48,7 +48,7 @@ const OnboardingPage: React.FC = () => {
       setCurrentWorkspace(workspace);
 
       // Complete onboarding
-      await fetch('http://localhost:3001/api/v1/auth/complete-onboarding', {
+      await fetch('https://nex-space-api.vercel.app/api/v1/auth/complete-onboarding', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
