@@ -55,7 +55,6 @@ export const useAuthStore = create<AuthState>()(
         })),
 
       fetchUser: async () => {
-        // ✅ Check if we have a token first
         const token = get().accessToken;
         if (!token) {
           set({ isLoading: false, isAuthenticated: false, user: null });
@@ -66,9 +65,12 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true });
           const user = await authService.getMe();
           set({ user, isAuthenticated: true, isLoading: false });
-          const token = get().accessToken;
-          if (token) socketService.connect(token);
+          const currentToken = get().accessToken;
+          if (currentToken) socketService.connect(currentToken);
         } catch {
+          // The api interceptor already attempted a token refresh and,
+          // if that failed, cleared storage + redirected to /login.
+          // Here we just reset local state to match.
           set({
             user: null,
             accessToken: null,
