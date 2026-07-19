@@ -13,7 +13,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://nex-space-api.vercel.app',
+        target: 'https://nexspace-wsl5.onrender.com',
         changeOrigin: true,
       },
     },

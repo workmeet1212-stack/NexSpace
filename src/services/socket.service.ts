@@ -6,7 +6,7 @@ class SocketService {
   connect(token: string) {
     if (this.socket?.connected) return;
 
-    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://nex-space-api.vercel.app';
+    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://nexspace-wsl5.onrender.com';
 
     this.socket = io(SOCKET_URL, {
       auth: { token },

@@ -56,11 +56,11 @@ const RegisterPage: React.FC = () => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = 'https://nex-space-api.vercel.app/api/v1/auth/google';
+    window.location.href = 'https://nexspace-wsl5.onrender.com/api/v1/auth/google';
   };
 
   const handleGithubLogin = () => {
-    window.location.href = 'https://nex-space-api.vercel.app/api/v1/auth/github';
+    window.location.href = 'https://nexspace-wsl5.onrender.com/api/v1/auth/github';
   };
 
   return (
