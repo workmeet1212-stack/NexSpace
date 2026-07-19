@@ -181,7 +181,11 @@ const WorkspaceSettingsPage: React.FC = () => {
                 </p>
               </div>
               {currentWorkspace?.plan !== 'pro' && (
-                <Button>Upgrade to Pro</Button>
+                <Button
+                  onClick={() => toast.info('Billing integration coming soon. Contact support to upgrade.')}
+                >
+                  Upgrade to Pro
+                </Button>
               )}
             </div>
           </CardContent>

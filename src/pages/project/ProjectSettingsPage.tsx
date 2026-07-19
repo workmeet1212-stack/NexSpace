@@ -10,7 +10,7 @@ import { Input } from '../../components/ui/Input';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { UserAvatar } from '../../components/common/UserAvatar';
 import {
-  Settings, Info, Users, Palette, Tags, Trash2, AlertTriangle, Save, ChevronDown
+  Settings, Info, Users, Palette, Tags, Trash2, AlertTriangle, Save, ChevronDown, X, Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -24,6 +24,12 @@ const ProjectSettingsPage: React.FC = () => {
   const [description, setDescription] = useState(currentProject?.description || '');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('member');
+  const [showAddStatus, setShowAddStatus] = useState(false);
+  const [newStatusName, setNewStatusName] = useState('');
+  const [newStatusColor, setNewStatusColor] = useState('#6366f1');
 
   // Update project mutation
   const updateProjectMutation = useMutation({
@@ -52,6 +58,66 @@ const ProjectSettingsPage: React.FC = () => {
     onError: () => toast.error('Failed to delete project'),
   });
 
+  // Update member role mutation
+  const updateMemberRoleMutation = useMutation({
+    mutationFn: async ({ memberId, role }: { memberId: string; role: string }) => {
+      const response = await api.patch(`/projects/${projectId}/members/${memberId}`, { role });
+      return response.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', currentWorkspace?._id] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success('Member role updated');
+    },
+    onError: () => toast.error('Failed to update member role'),
+  });
+
+  // Remove member mutation
+  const removeMemberMutation = useMutation({
+    mutationFn: async (memberId: string) => {
+      await api.delete(`/projects/${projectId}/members/${memberId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', currentWorkspace?._id] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success('Member removed');
+    },
+    onError: () => toast.error('Failed to remove member'),
+  });
+
+  // Add project member mutation
+  const addMemberMutation = useMutation({
+    mutationFn: async (data: { userId: string; role?: string }) => {
+      const response = await api.post(`/projects/${projectId}/members`, data);
+      return response.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', currentWorkspace?._id] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success('Member added successfully');
+      setShowInviteModal(false);
+      setInviteEmail('');
+      setInviteRole('member');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to add member');
+    },
+  });
+
+  // Update statuses mutation
+  const updateStatusesMutation = useMutation({
+    mutationFn: async (statuses: { name: string; color: string }[]) => {
+      const response = await api.patch(`/projects/${projectId}/statuses`, { statuses });
+      return response.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', currentWorkspace?._id] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success('Statuses updated');
+    },
+    onError: () => toast.error('Failed to update statuses'),
+  });
+
   const handleSaveGeneral = () => {
     updateProjectMutation.mutate({ name, description });
   };
@@ -60,6 +126,55 @@ const ProjectSettingsPage: React.FC = () => {
     if (deleteConfirmText === currentProject?.name) {
       deleteProjectMutation.mutate();
     }
+  };
+
+  const handleInviteMember = async () => {
+    if (!inviteEmail.trim()) {
+      toast.error('Email is required');
+      return;
+    }
+
+    try {
+      // First, search for user by email in the workspace
+      const searchResponse = await api.get(`/workspaces/${currentWorkspace?._id}/members`, {
+        params: { search: inviteEmail.trim() },
+      });
+      const members = searchResponse.data.data || [];
+      const foundMember = members.find(
+        (m: any) => m.user?.email?.toLowerCase() === inviteEmail.trim().toLowerCase()
+      );
+
+      if (!foundMember) {
+        toast.error('User not found in this workspace. Ask them to join the workspace first.');
+        return;
+      }
+
+      addMemberMutation.mutate({
+        userId: foundMember.user._id,
+        role: inviteRole,
+      });
+    } catch {
+      toast.error('Failed to search for user');
+    }
+  };
+
+  const handleAddStatus = () => {
+    if (!newStatusName.trim()) {
+      toast.error('Status name is required');
+      return;
+    }
+    const currentStatuses = currentProject?.settings?.taskStatuses || [];
+    if (currentStatuses.some((s) => s.name.toLowerCase() === newStatusName.trim().toLowerCase())) {
+      toast.error('Status already exists');
+      return;
+    }
+    updateStatusesMutation.mutate([
+      ...currentStatuses,
+      { name: newStatusName.trim(), color: newStatusColor },
+    ]);
+    setNewStatusName('');
+    setNewStatusColor('#6366f1');
+    setShowAddStatus(false);
   };
 
   const projectMembers = currentProject?.members || [];
@@ -146,16 +261,33 @@ const ProjectSettingsPage: React.FC = () => {
                     <select
                       className="text-sm border border-gray-300 rounded-lg px-2 py-1"
                       defaultValue={member.role}
+                      onChange={(e) =>
+                        updateMemberRoleMutation.mutate({
+                          memberId: member.user._id,
+                          role: e.target.value,
+                        })
+                      }
                     >
                       <option value="lead">Lead</option>
                       <option value="member">Member</option>
                       <option value="viewer">Viewer</option>
                     </select>
+                    <button
+                      onClick={() => removeMemberMutation.mutate(member.user._id)}
+                      className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+                      title="Remove member"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}
 
-              <Button variant="outline" className="w-full mt-4">
+              <Button
+                variant="outline"
+                className="w-full mt-4"
+                onClick={() => setShowInviteModal(true)}
+              >
                 <Users className="w-4 h-4 mr-2" />
                 Invite member
               </Button>
@@ -190,9 +322,43 @@ const ProjectSettingsPage: React.FC = () => {
                 </div>
               ))}
             </div>
-            <Button variant="outline" className="w-full mt-4">
-              + Add status
+            <Button
+              variant="outline"
+              className="w-full mt-4"
+              onClick={() => setShowAddStatus(true)}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add status
             </Button>
+            {showAddStatus && (
+              <div className="mt-3 p-4 bg-gray-50 rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">New Status</span>
+                  <button onClick={() => setShowAddStatus(false)} className="text-gray-400 hover:text-gray-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={newStatusColor}
+                    onChange={(e) => setNewStatusColor(e.target.value)}
+                    className="w-8 h-8 rounded cursor-pointer"
+                  />
+                  <Input
+                    placeholder="Status name"
+                    value={newStatusName}
+                    onChange={(e) => setNewStatusName(e.target.value)}
+                    className="flex-1"
+                    autoFocus
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddStatus()}
+                  />
+                </div>
+                <Button size="sm" className="w-full" onClick={handleAddStatus} loading={updateStatusesMutation.isPending}>
+                  Add status
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -247,6 +413,65 @@ const ProjectSettingsPage: React.FC = () => {
                   loading={deleteProjectMutation.isPending}
                 >
                   Delete permanently
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Invite Member Modal */}
+        {showInviteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setShowInviteModal(false)} />
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Invite to Project</h2>
+                <button onClick={() => setShowInviteModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-gray-600 mb-4">
+                Add a workspace member to <strong>{currentProject?.name}</strong>. They must already be a member of the workspace.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Email address
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="colleague@example.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    autoFocus
+                    onKeyDown={(e) => e.key === 'Enter' && handleInviteMember()}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Role
+                  </label>
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
+                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white"
+                  >
+                    <option value="lead">Lead</option>
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-4">
+                <Button variant="outline" onClick={() => setShowInviteModal(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleInviteMember}
+                  loading={addMemberMutation.isPending}
+                  disabled={!inviteEmail.trim()}
+                >
+                  Add member
                 </Button>
               </div>
             </div>

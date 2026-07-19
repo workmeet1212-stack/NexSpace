@@ -58,7 +58,7 @@ const NotificationDropdown: React.FC = () => {
     },
   });
 
-  const unreadCount = notifications?.length > 0 ? notifications.filter((n: Notification) => !n.read).length : [];
+  const unreadCount = notifications?.length > 0 ? notifications.filter((n: Notification) => !n.read).length : 0;
 
   const handleMarkAsRead = (notificationId: string) => {
     markAsReadMutation.mutate(notificationId);
@@ -175,7 +175,13 @@ const NotificationDropdown: React.FC = () => {
               {/* Footer */}
               {notifications.length > 0 && (
                 <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
-                  <button className="w-full text-center text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+                  <button
+                    onClick={() => {
+                      setIsOpen(false);
+                      window.location.href = '/notifications';
+                    }}
+                    className="w-full text-center text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                  >
                     View all notifications
                   </button>
                 </div>

@@ -357,6 +357,43 @@ export const addProjectMember = async (req: Request, res: Response): Promise<voi
   });
 };
 
+// Update project member role
+export const updateProjectMemberRole = async (req: Request, res: Response): Promise<void> => {
+  const { projectId, memberId } = req.params;
+  const { role } = req.body;
+
+  if (!['lead', 'member', 'viewer'].includes(role)) {
+    errorResponse({ res, message: 'Invalid role', statusCode: 400 });
+    return;
+  }
+
+  const project = await Project.findById(projectId);
+
+  if (!project || project.isDeleted) {
+    errorResponse({ res, message: 'Project not found', statusCode: 404 });
+    return;
+  }
+
+  const memberIdx = project.members.findIndex(
+    (m) => m.user.toString() === memberId
+  );
+
+  if (memberIdx === -1) {
+    errorResponse({ res, message: 'Member not found', statusCode: 404 });
+    return;
+  }
+
+  project.members[memberIdx].role = role;
+  await project.save();
+  await project.populate('members.user', 'name email avatar');
+
+  successResponse({
+    res,
+    data: project.members,
+    message: 'Member role updated successfully',
+  });
+};
+
 // Remove project member
 export const removeProjectMember = async (req: Request, res: Response): Promise<void> => {
   const { projectId, memberId } = req.params;

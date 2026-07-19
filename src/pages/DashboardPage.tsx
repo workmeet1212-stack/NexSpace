@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 import { useAuthStore } from '../store/authStore';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { useProjectStore } from '../store/projectStore';
@@ -12,6 +13,8 @@ import { UserAvatar } from '../components/common/UserAvatar';
 import { PriorityBadge } from '../components/common/PriorityBadge';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { formatDate, formatRelative } from '../utils/formatDate';
+import { CreateProjectModal } from '../components/modals/CreateProjectModal';
+import { TaskCreateModal } from '../components/modals/TaskCreateModal';
 import api from '../services/api';
 import {
   CheckCircle2,
@@ -23,13 +26,19 @@ import {
   Sparkles,
   Calendar,
   Zap,
+  X,
 } from 'lucide-react';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const { currentWorkspace, fetchWorkspaces } = useWorkspaceStore();
   const { projects, currentProject, setCurrentProject, fetchProjects } = useProjectStore();
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [standup, setStandup] = useState<{ yesterday: string[]; today: string[]; blockers: string[] } | null>(null);
+  const [standupLoading, setStandupLoading] = useState(false);
 
   useEffect(() => {
     if (!currentWorkspace) {
@@ -142,10 +151,64 @@ const DashboardPage: React.FC = () => {
                   variant="secondary"
                   size="sm"
                   className="mt-4 bg-white/20 hover:bg-white/30 text-white border-0"
+                  onClick={async () => {
+                    const projectId = currentProject?._id || (projects.length > 0 ? projects[0]._id : null);
+                    if (!projectId) {
+                      toast.info('Create a project first');
+                      return;
+                    }
+                    setStandupLoading(true);
+                    try {
+                      const response = await api.post(`/ai/standup`, { projectId });
+                      setStandup(response.data.data || null);
+                    } catch {
+                      toast.error('Failed to generate standup');
+                    } finally {
+                      setStandupLoading(false);
+                    }
+                  }}
+                  loading={standupLoading}
                 >
                   <Zap className="w-4 h-4 mr-2" />
                   Generate Standup
                 </Button>
+                {standup && (
+                  <div className="mt-4 p-4 bg-white/10 rounded-lg text-sm text-white/90">
+                    <div className="flex items-start justify-between mb-2">
+                      <span className="font-medium">Your Standup</span>
+                      <button
+                        onClick={() => setStandup(null)}
+                        className="text-white/60 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {standup.yesterday?.length > 0 && (
+                      <div className="mb-2">
+                        <span className="text-white/60">Yesterday:</span>
+                        <ul className="list-disc list-inside mt-1">
+                          {standup.yesterday.map((item: string, i: number) => <li key={i}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {standup.today?.length > 0 && (
+                      <div className="mb-2">
+                        <span className="text-white/60">Today:</span>
+                        <ul className="list-disc list-inside mt-1">
+                          {standup.today.map((item: string, i: number) => <li key={i}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {standup.blockers?.length > 0 && (
+                      <div>
+                        <span className="text-white/60">Blockers:</span>
+                        <ul className="list-disc list-inside mt-1">
+                          {standup.blockers.map((item: string, i: number) => <li key={i}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="w-24 h-24 opacity-20">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -198,7 +261,13 @@ const DashboardPage: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg">My Tasks</CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => navigate('/tasks')}>
+                <Button variant="ghost" size="sm" onClick={() => {
+                    if (currentProject?._id) {
+                      navigate(`/project/${currentProject._id}/list`);
+                    } else if (projects.length > 0) {
+                      navigate(`/project/${projects[0]._id}/list`);
+                    }
+                  }}>
                   View all
                   <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
@@ -241,7 +310,18 @@ const DashboardPage: React.FC = () => {
                   <div className="text-center py-8">
                     <CheckCircle2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500">No tasks assigned to you</p>
-                    <Button variant="link" className="mt-2">
+                    <Button
+                      variant="link"
+                      className="mt-2"
+                      onClick={() => {
+                        if (currentProject?._id || projects.length > 0) {
+                          setShowCreateTask(true);
+                        } else {
+                          toast.info('Create a project first');
+                          setShowCreateProject(true);
+                        }
+                      }}
+                    >
                       Create a task
                     </Button>
                   </div>
@@ -261,7 +341,7 @@ const DashboardPage: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg">Projects</CardTitle>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={() => setShowCreateProject(true)}>
                   <Plus className="w-4 h-4" />
                 </Button>
               </CardHeader>
@@ -299,7 +379,7 @@ const DashboardPage: React.FC = () => {
                 ) : (
                   <div className="text-center py-8">
                     <p className="text-gray-500 text-sm">No projects yet</p>
-                    <Button variant="link" size="sm" className="mt-2">
+                    <Button variant="link" size="sm" className="mt-2" onClick={() => setShowCreateProject(true)}>
                       Create your first project
                     </Button>
                   </div>
@@ -309,6 +389,22 @@ const DashboardPage: React.FC = () => {
           </motion.div>
         </div>
       </div>
+      <CreateProjectModal
+        isOpen={showCreateProject}
+        onClose={() => {
+          setShowCreateProject(false);
+          queryClient.invalidateQueries({ queryKey: ['projects', currentWorkspace?._id] });
+        }}
+      />
+      {showCreateTask && (currentProject?._id || projects.length > 0) && (
+        <TaskCreateModal
+          isOpen={showCreateTask}
+          onClose={() => setShowCreateTask(false)}
+          projectId={(currentProject?._id || projects[0]._id)!}
+          projectMembers={(currentProject?.members || projects[0]?.members || [])}
+          statuses={(currentProject?.settings?.taskStatuses || projects[0]?.settings?.taskStatuses || [])}
+        />
+      )}
     </div>
   );
 };

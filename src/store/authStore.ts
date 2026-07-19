@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { User } from '../types/auth.types';
 import { authService } from '../services/auth.service';
+import socketService from '../services/socket.service';
 
 interface AuthState {
   user: User | null;
@@ -27,15 +28,18 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user }),
       setAccessToken: (token) => set({ accessToken: token }),
 
-      login: (user, token) =>
+      login: (user, token) => {
         set({
           user,
           accessToken: token,
           isAuthenticated: true,
           isLoading: false,
-        }),
+        });
+        socketService.connect(token);
+      },
 
       logout: () => {
+        socketService.disconnect();
         authService.logout().catch(() => {});
         set({
           user: null,
@@ -62,6 +66,8 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true });
           const user = await authService.getMe();
           set({ user, isAuthenticated: true, isLoading: false });
+          const token = get().accessToken;
+          if (token) socketService.connect(token);
         } catch {
           set({
             user: null,

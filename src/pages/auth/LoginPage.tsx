@@ -21,6 +21,7 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const {
     register,
@@ -140,7 +141,12 @@ const LoginPage: React.FC = () => {
 
         <div className="flex items-center justify-between">
           <label className="flex items-center">
-            <input type="checkbox" className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
             <span className="ml-2 text-sm text-gray-600">Remember me</span>
           </label>
           <Link to="/forgot-password" className="text-sm text-indigo-600 hover:text-indigo-500">

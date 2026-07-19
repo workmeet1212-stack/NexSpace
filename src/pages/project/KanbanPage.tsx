@@ -31,6 +31,12 @@ const KanbanPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createModalStatus, setCreateModalStatus] = useState('Todo');
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [filterPriority, setFilterPriority] = useState<string>('all');
+  const [filterAssignee, setFilterAssignee] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'dueDate' | 'priority'>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -141,18 +147,43 @@ const KanbanPage: React.FC = () => {
   // Group tasks by status
   const tasksByStatus = useMemo(() => {
     if (!tasks) return {};
-    const filtered = searchQuery
+    let filtered = searchQuery
       ? tasks.filter((t: Task) =>
           t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
           t.taskId.toLowerCase().includes(searchQuery.toLowerCase())
         )
-      : tasks;
+      : [...tasks];
+
+    if (filterPriority !== 'all') {
+      filtered = filtered.filter((t: Task) => t.priority === filterPriority);
+    }
+
+    if (filterAssignee !== 'all') {
+      filtered = filtered.filter((t: Task) =>
+        t.assignees?.some((a) => a._id === filterAssignee)
+      );
+    }
+
+    const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
+    filtered.sort((a: Task, b: Task) => {
+      let cmp = 0;
+      if (sortBy === 'priority') {
+        cmp = priorityOrder[a.priority] - priorityOrder[b.priority];
+      } else if (sortBy === 'dueDate') {
+        const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+        const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+        cmp = aDate - bDate;
+      } else {
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
 
     return statuses.reduce((acc: Record<string, Task[]>, status) => {
       acc[status.name] = filtered.filter((t: Task) => t.status === status.name);
       return acc;
     }, {});
-  }, [tasks, statuses, searchQuery]);
+  }, [tasks, statuses, searchQuery, filterPriority, filterAssignee, sortBy, sortOrder]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -211,15 +242,104 @@ const KanbanPage: React.FC = () => {
             />
           </div>
 
-          <Button variant="outline" size="sm">
-            <Filter className="w-4 h-4 mr-2" />
-            Filter
-          </Button>
+          <div className="relative">
+            <Button
+              variant={showFilterDropdown ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setShowFilterDropdown(!showFilterDropdown);
+                setShowSortDropdown(false);
+              }}
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              Filter
+            </Button>
+            {showFilterDropdown && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-30 w-56">
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Priority</label>
+                    <select
+                      value={filterPriority}
+                      onChange={(e) => setFilterPriority(e.target.value)}
+                      className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white"
+                    >
+                      <option value="all">All priorities</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                      <option value="none">No priority</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Assignee</label>
+                    <select
+                      value={filterAssignee}
+                      onChange={(e) => setFilterAssignee(e.target.value)}
+                      className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white"
+                    >
+                      <option value="all">All assignees</option>
+                      {currentProject?.members?.map((m) => (
+                        <option key={m.user._id} value={m.user._id}>{m.user.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {(filterPriority !== 'all' || filterAssignee !== 'all') && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        setFilterPriority('all');
+                        setFilterAssignee('all');
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
-          <Button variant="outline" size="sm">
-            <SortAsc className="w-4 h-4 mr-2" />
-            Sort
-          </Button>
+          <div className="relative">
+            <Button
+              variant={showSortDropdown ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setShowSortDropdown(!showSortDropdown);
+                setShowFilterDropdown(false);
+              }}
+            >
+              <SortAsc className="w-4 h-4 mr-2" />
+              Sort
+            </Button>
+            {showSortDropdown && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-30 w-48">
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Sort by</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white"
+                  >
+                    <option value="createdAt">Date created</option>
+                    <option value="dueDate">Due date</option>
+                    <option value="priority">Priority</option>
+                  </select>
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as any)}
+                    className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white"
+                  >
+                    <option value="desc">Descending</option>
+                    <option value="asc">Ascending</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <Button onClick={() => handleAddTask('Todo')}>

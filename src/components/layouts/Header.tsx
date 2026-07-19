@@ -61,7 +61,11 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       {/* Right */}
       <div className="flex items-center gap-2">
         {currentProject && (
-          <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+          <button
+            onClick={() => navigate(`/project/${currentProject._id}/board`)}
+            className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+            title="Board"
+          >
             <MessageSquare className="w-5 h-5" />
           </button>
         )}

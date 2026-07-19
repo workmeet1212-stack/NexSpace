@@ -7,6 +7,7 @@ import {
   deleteProject,
   updateProjectStatuses,
   addProjectMember,
+  updateProjectMemberRole,
   removeProjectMember,
 } from '../controllers/project.controller';
 import { authenticate } from '../middleware/auth.middleware';
@@ -29,6 +30,7 @@ router.patch('/:projectId/statuses', checkPermission('project', 'update'), updat
 
 // Project members
 router.post('/:projectId/members', checkPermission('project', 'update'), addProjectMember);
+router.patch('/:projectId/members/:memberId', checkPermission('project', 'update'), updateProjectMemberRole);
 router.delete('/:projectId/members/:memberId', checkPermission('project', 'update'), removeProjectMember);
 
 export default router;

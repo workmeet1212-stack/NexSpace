@@ -11,6 +11,7 @@ import { Input } from '../../components/ui/Input';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Spinner } from '../../components/ui/Spinner';
 import { KanbanCard } from '../../components/kanban/KanbanCard';
+import TaskDrawer from '../../components/drawers/TaskDrawer';
 import { Task } from '../../types/task.types';
 import {
   Plus, Calendar, Play, Pause, ChevronDown, CheckCircle,
@@ -23,10 +24,11 @@ const SprintPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
   const { currentProject } = useProjectStore();
-  const { setCurrentTask } = useTaskStore();
+  const { setCurrentTask, currentTask } = useTaskStore();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [newSprintName, setNewSprintName] = useState('');
   const [showNewSprint, setShowNewSprint] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -244,7 +246,10 @@ const SprintPage: React.FC = () => {
                           <KanbanCard
                             key={task._id}
                             task={task}
-                            onClick={() => setCurrentTask(task)}
+                            onClick={() => {
+                              setCurrentTask(task);
+                              setDrawerOpen(true);
+                            }}
                           />
                         ))}
                       </div>
@@ -296,7 +301,10 @@ const SprintPage: React.FC = () => {
                           <KanbanCard
                             key={task._id}
                             task={task}
-                            onClick={() => setCurrentTask(task)}
+                            onClick={() => {
+                              setCurrentTask(task);
+                              setDrawerOpen(true);
+                            }}
                           />
                         ))}
                       </div>
@@ -336,7 +344,10 @@ const SprintPage: React.FC = () => {
                         <KanbanCard
                           key={task._id}
                           task={task}
-                          onClick={() => setCurrentTask(task)}
+                          onClick={() => {
+                            setCurrentTask(task);
+                            setDrawerOpen(true);
+                          }}
                         />
                       ))}
                     </div>
@@ -359,6 +370,15 @@ const SprintPage: React.FC = () => {
           </DragOverlay>
         </DndContext>
       )}
+
+      <TaskDrawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        task={currentTask}
+        projectId={projectId!}
+        projectMembers={currentProject?.members}
+        statuses={currentProject?.settings?.taskStatuses}
+      />
     </div>
   );
 };

@@ -59,31 +59,14 @@ const AnalyticsPage: React.FC = () => {
     { name: 'Low', value: taskStats?.byPriority?.low || 0, color: '#6b7280' },
   ];
 
-  // Burndown chart data (simulated)
-  const burndownData = analytics?.burndown || Array.from({ length: 14 }, (_, i) => ({
-    day: `Day ${i + 1}`,
-    ideal: 20 - (i * 1.4),
-    actual: Math.max(0, 20 - (i * 1.2) + Math.sin(i) * 2)
-  }));
+  // Burndown chart data
+  const burndownData = analytics?.burndown || [];
 
   // Velocity chart data
-  const velocityData = analytics?.velocity || [
-    { sprint: 'Sprint 1', planned: 15, completed: 12 },
-    { sprint: 'Sprint 2', planned: 18, completed: 17 },
-    { sprint: 'Sprint 3', planned: 20, completed: 19 },
-    { sprint: 'Sprint 4', planned: 22, completed: 21 },
-  ];
+  const velocityData = analytics?.velocity || [];
 
   // Activity trend data
-  const activityData = analytics?.activityTrend || Array.from({ length: 7 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - i));
-    return {
-      date: date.toLocaleDateString('en-US', { weekday: 'short' }),
-      created: Math.floor(Math.random() * 10) + 1,
-      completed: Math.floor(Math.random() * 8) + 1,
-    };
-  });
+  const activityData = analytics?.activityTrend || [];
 
   if (isLoading) {
     return (
@@ -209,7 +192,7 @@ const AnalyticsPage: React.FC = () => {
                 <div>
                   <p className="text-sm text-gray-500">Avg. Velocity</p>
                   <p className="text-3xl font-bold text-gray-900 mt-1">
-                    {analytics?.avgVelocity || 17}
+                    {analytics?.avgVelocity ?? 0}
                   </p>
                 </div>
                 <div className="p-3 bg-purple-100 rounded-lg">
@@ -233,6 +216,7 @@ const AnalyticsPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="h-64">
+              {burndownData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={burndownData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -245,6 +229,11 @@ const AnalyticsPage: React.FC = () => {
                   <Area type="monotone" dataKey="actual" stroke="#6366f1" fill="#eef2ff" />
                 </AreaChart>
               </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                  No active sprint data yet
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -256,6 +245,7 @@ const AnalyticsPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="h-64">
+              {velocityData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={velocityData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -269,6 +259,11 @@ const AnalyticsPage: React.FC = () => {
                   <Bar dataKey="completed" fill="#6366f1" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                  No completed sprints yet
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -356,6 +351,7 @@ const AnalyticsPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="h-64">
+              {activityData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={activityData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -369,6 +365,11 @@ const AnalyticsPage: React.FC = () => {
                   <Line type="monotone" dataKey="completed" stroke="#22c55e" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                  No recent activity
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -381,13 +382,10 @@ const AnalyticsPage: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="h-64">
+            {(analytics?.workload || []).length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={analytics?.workload || [
-                  { name: 'You', tasks: 8, completed: 5 },
-                  { name: 'Alex', tasks: 6, completed: 4 },
-                  { name: 'Sam', tasks: 4, completed: 3 },
-                ]}
+                data={analytics?.workload || []}
                 layout="vertical"
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -401,6 +399,11 @@ const AnalyticsPage: React.FC = () => {
                 <Bar dataKey="completed" fill="#6366f1" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                No assigned tasks yet
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

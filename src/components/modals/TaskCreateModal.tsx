@@ -129,7 +129,7 @@ export const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-140px)]">
+          <form id="create-task-form" onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-140px)]">
             {/* Title */}
             <div>
               <Input
@@ -302,7 +302,7 @@ export const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button type="submit" onClick={handleSubmit} loading={createTaskMutation.isPending}>
+            <Button type="submit" form="create-task-form" onClick={handleSubmit} loading={createTaskMutation.isPending}>
               Create task
             </Button>
           </div>

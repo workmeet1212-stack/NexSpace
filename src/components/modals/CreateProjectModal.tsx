@@ -139,7 +139,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <form id="create-project-form" onSubmit={handleSubmit} className="p-6 space-y-5">
             {/* Name & Identifier */}
             <div className="grid grid-cols-3 gap-4">
               <div className="col-span-2">
@@ -284,6 +284,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
             </Button>
             <Button
               type="submit"
+              form="create-project-form"
               onClick={handleSubmit}
               loading={createProjectMutation.isPending}
               disabled={!name.trim()}

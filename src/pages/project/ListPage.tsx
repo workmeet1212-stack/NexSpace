@@ -12,6 +12,8 @@ import { UserAvatar } from '../../components/common/UserAvatar';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Spinner } from '../../components/ui/Spinner';
+import { TaskCreateModal } from '../../components/modals/TaskCreateModal';
+import TaskDrawer from '../../components/drawers/TaskDrawer';
 import { Task } from '../../types/task.types';
 import {
   Search, Plus, Filter, SortAsc, ChevronDown, CheckSquare,
@@ -26,7 +28,7 @@ const ListPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { currentProject } = useProjectStore();
-  const { setCurrentTask } = useTaskStore();
+  const { setCurrentTask, currentTask } = useTaskStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'createdAt' | 'dueDate' | 'priority'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -34,6 +36,9 @@ const ListPage: React.FC = () => {
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Fetch tasks
   const { data: tasks, isLoading } = useQuery({
@@ -168,14 +173,44 @@ const ListPage: React.FC = () => {
             Filter
           </Button>
 
-          <Button variant="outline" size="sm">
-            <SortAsc className="w-4 h-4 mr-2" />
-            Sort
-            <ChevronDown className="w-4 h-4 ml-1" />
-          </Button>
+          <div className="relative">
+            <Button
+              variant={showSortDropdown ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowSortDropdown(!showSortDropdown)}
+            >
+              <SortAsc className="w-4 h-4 mr-2" />
+              Sort
+              <ChevronDown className="w-4 h-4 ml-1" />
+            </Button>
+            {showSortDropdown && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-30 w-48">
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Sort by</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white"
+                  >
+                    <option value="createdAt">Date created</option>
+                    <option value="dueDate">Due date</option>
+                    <option value="priority">Priority</option>
+                  </select>
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as any)}
+                    className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white"
+                  >
+                    <option value="desc">Descending</option>
+                    <option value="asc">Ascending</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <Button>
+        <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Add Task
         </Button>
@@ -291,7 +326,10 @@ const ListPage: React.FC = () => {
                 {filteredTasks.map((task: Task) => (
                   <tr
                     key={task._id}
-                    onClick={() => setCurrentTask(task)}
+                    onClick={() => {
+                      setCurrentTask(task);
+                      setDrawerOpen(true);
+                    }}
                     className={cn(
                       'hover:bg-gray-50 cursor-pointer transition-colors',
                       selectedTasks.includes(task._id) && 'bg-indigo-50'
@@ -343,6 +381,23 @@ const ListPage: React.FC = () => {
           </div>
         )}
       </Card>
+
+      <TaskCreateModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        projectId={projectId!}
+        projectMembers={currentProject?.members}
+        statuses={statuses}
+      />
+
+      <TaskDrawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        task={currentTask}
+        projectId={projectId!}
+        projectMembers={currentProject?.members}
+        statuses={statuses}
+      />
     </div>
   );
 };
